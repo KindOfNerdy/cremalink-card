@@ -276,7 +276,12 @@ class CremalinkCard extends HTMLElement {
       },
       true
     );
-    this.shadowRoot.addEventListener("focusout", () => setTimeout(() => this._refresh(), 0));
+    // redraw after a drop-down closed, but only if an update was held back meanwhile
+    this.shadowRoot.addEventListener("focusout", () => {
+      if (!this._dirty) return;
+      this._dirty = false;
+      setTimeout(() => this._refresh(), 0);
+    });
     this.shadowRoot.addEventListener("focusin", (e) => {
       if (e.target.matches?.("input[data-act='type']")) e.target.select();
     });
@@ -361,7 +366,9 @@ class CremalinkCard extends HTMLElement {
 
   connectedCallback() {
     // keeps "reported 2 min ago" current between state changes
-    this._ticker = setInterval(() => this._refresh(), 30000);
+    this._ticker = setInterval(() => {
+      if (this._hass) this._update();
+    }, 30000);
   }
 
   disconnectedCallback() {
@@ -616,7 +623,10 @@ class CremalinkCard extends HTMLElement {
     }
     // do not redraw under an open drop-down or while typing
     const active = this.shadowRoot.activeElement?.tagName;
-    if (active === "SELECT" || active === "INPUT") return;
+    if (active === "SELECT" || active === "INPUT") {
+      this._dirty = true;
+      return;
+    }
 
     const ids = [...Object.values(this._found.entities)];
     const states = ids.map((id) => `${hass.states[id]?.state}`).join("|");
@@ -645,6 +655,7 @@ class CremalinkCard extends HTMLElement {
       this._config.tab_labels !== false,
       Object.keys(recipeAttrs.option_beverages || {}).length,
       (recipeAttrs.favorite_beverages || []).join(","),
+      this._state("cremalink_last_report") ? this._since(this._state("cremalink_last_report").state) : "",
     ].join("#");
     if (sig === this._sig) return;
     this._sig = sig;
@@ -974,6 +985,11 @@ class CremalinkCard extends HTMLElement {
       if (!hide.includes("settings")) body += this._settings();
     }
     body += `<div class="msg">${this._message}</div>`;
+    // Keep the card's height and the drinks list's scroll position while the content is
+    // rebuilt; otherwise Safari on iOS jumps the page to the card on every tap.
+    const height = this.offsetHeight || 0;
+    const keepTop = this.shadowRoot.querySelector(".drinks")?.scrollTop || 0;
+    if (height && this.style) this.style.minHeight = `${height}px`;
     this.shadowRoot.innerHTML = `
       <style>
         :host { display: block; container-type: inline-size; }
@@ -1109,6 +1125,15 @@ class CremalinkCard extends HTMLElement {
         .msg { min-height: 1.2em; margin-top: 8px; font-size: 13px; color: var(--error-color); }
       </style>
       <ha-card>${body}</ha-card>`;
+    const list = this.shadowRoot.querySelector(".drinks");
+    if (list && keepTop) list.scrollTop = keepTop;
+    if (this.style && typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(() => {
+        this.style.minHeight = "";
+      });
+    } else if (this.style) {
+      this.style.minHeight = "";
+    }
   }
 }
 
