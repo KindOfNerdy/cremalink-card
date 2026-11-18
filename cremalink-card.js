@@ -38,7 +38,8 @@ const TEXT = {
     counters: "Counters",
     total: "Beverages total",
     aborted: "Aborted",
-    grounds_count: "Grounds counter",
+    descales: "Descalings",
+    water_total: "Water used in total",
     settings: "Settings",
     info: "Data",
     stats_updated: "Counters as of",
@@ -96,7 +97,8 @@ const TEXT = {
     counters: "Zähler",
     total: "Getränke gesamt",
     aborted: "Abgebrochen",
-    grounds_count: "Satzzähler",
+    descales: "Entkalkungen",
+    water_total: "Wasser gesamt",
     settings: "Einstellungen",
     info: "Daten",
     stats_updated: "Zählerstand von",
@@ -889,8 +891,9 @@ class CremalinkCard extends HTMLElement {
     };
     const counters =
       counter("stat_total_beverages", this._t("total")) +
-      counter("stat_aborted_beverages", this._t("aborted")) +
-      counter("stat_grounds_counter", this._t("grounds_count"));
+      counter("stat_descales", this._t("descales")) +
+      counter("stat_water_total_quantity", this._t("water_total")) +
+      counter("stat_aborted_beverages", this._t("aborted"));
     if (!bars && !counters) return "";
     return this._fold("toggle-maint", this._maintOpen, this._t("maintenance"), `${bars}${counters ? `<div class="kvs">${counters}</div>` : ""}`);
   }
