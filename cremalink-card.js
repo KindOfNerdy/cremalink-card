@@ -164,11 +164,20 @@ const PARAMS = ["param_coffee", "param_water", "param_milk", "param_taste", "par
 // Binary sensors shown as warnings when on (besides every alarm_*)
 const EXTRA_ALARMS = ["is_watertank_empty", "switch_water_tank_absent", "switch_water_level_low"];
 
+// Custom recipes carry a picture number set on the machine. Like the Coffee Link app,
+// the number stands for one of the drinks (0 cappuccino, 1 espresso, 2 latte macchiato …).
+const SYMBOL_DRINK = [
+  "cappuccino", "espresso", "latte_macchiato", "double_espresso", "caffe_latte", "doppio_plus",
+  "hot_milk", "americano", "cappuccino_plus", "coffee", "espresso_macchiato", "flat_white",
+  "hot_water", "cold_milk", "long_coffee", "steam", "chocolate", "cappuccino_mix", "hot_water", "tea",
+];
+
 // Icon per drink (own mapping from public MDI icons; pictures are optional via `images`)
 function drinkIcon(key) {
   const k = String(key).toLowerCase();
   if (k.includes("tea")) return "mdi:tea";
-  if (k.includes("hot_water")) return "mdi:kettle-steam";
+  if (k.includes("hot_water") || k === "steam") return "mdi:kettle-steam";
+  if (k === "cold_milk" || k === "chocolate") return "mdi:cup";
   if (k.includes("pot")) return "mdi:coffee-maker";
   if (k.startsWith("mug_") || k.endsWith("_mug")) return "mdi:glass-mug-variant";
   if (k.includes("iced") || k.includes("ice") || k.includes("cold_brew")) return "mdi:cup-water";
@@ -567,6 +576,7 @@ class CremalinkCard extends HTMLElement {
         options: r.attributes.options,
         ids: r.attributes.option_beverages || {},
         favorites: r.attributes.favorite_beverages || [],
+        icons: r.attributes.option_icons || {},
         state: r.state,
       };
       if (JSON.stringify(next) !== JSON.stringify(this._cache.recipe)) {
@@ -654,6 +664,7 @@ class CremalinkCard extends HTMLElement {
       this._config.show_default_profiles === true,
       this._config.tab_labels !== false,
       Object.keys(recipeAttrs.option_beverages || {}).length,
+      JSON.stringify(recipeAttrs.option_icons || {}),
       (recipeAttrs.favorite_beverages || []).join(","),
       this._state("cremalink_last_report") ? this._since(this._state("cremalink_last_report").state) : "",
     ].join("#");
@@ -803,11 +814,12 @@ class CremalinkCard extends HTMLElement {
     // While the machine sleeps the select is unavailable: show the last known list, dimmed.
     const live = st.state !== "unavailable";
     const known = live
-      ? { options: st.attributes.options, ids: st.attributes.option_beverages, favorites: st.attributes.favorite_beverages, state: st.state }
+      ? { options: st.attributes.options, ids: st.attributes.option_beverages, favorites: st.attributes.favorite_beverages, icons: st.attributes.option_icons, state: st.state }
       : this._cache.recipe;
     if (!known || !Array.isArray(known.options)) return "";
     const all = known.options || [];
     const ids = known.ids || {};
+    const icons = known.icons || {};
     const locked = !live || f.running;
     const wanted = Array.isArray(this._config.drinks) ? this._config.drinks : null;
     const options = all.filter((o) => (wanted ? wanted.includes(o) : true));
@@ -832,10 +844,12 @@ class CremalinkCard extends HTMLElement {
     const tiles = groups[tab]
       .map((o) => {
         const sel = live && o === st.state;
-        const picture = this._drinkPicture(o);
+        // a custom recipe is drawn like the drink its picture number stands for
+        const key = SYMBOL_DRINK[icons[o]] || o;
+        const picture = this._drinkPicture(key);
         const visual = picture
-          ? `<img class="d-pic" src="${picture}" data-icon="${drinkIcon(o)}" alt="" loading="lazy">`
-          : `<ha-icon icon="${drinkIcon(o)}"></ha-icon>`;
+          ? `<img class="d-pic" src="${picture}" data-icon="${drinkIcon(key)}" alt="" loading="lazy">`
+          : `<ha-icon icon="${drinkIcon(key)}"></ha-icon>`;
         return `<button class="drink ${sel ? "sel" : ""}" data-act="drink" data-entity="${st.entity_id}" data-value="${o}"
             aria-pressed="${sel}" ${locked ? "disabled" : ""}>
             ${visual}<span class="d-name">${this._hass.formatEntityState(st, o)}</span></button>`;
