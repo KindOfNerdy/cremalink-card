@@ -23,6 +23,11 @@ const TEXT = {
     last_report: "Reported {when}",
     never: "no report yet",
     recipe: "Drink",
+    tab_favorites: "Favorites",
+    tab_hot: "Hot",
+    tab_cold: "Cold",
+    tab_togo: "To go",
+    tab_custom: "Custom",
     profile: "Profile",
     adjust: "Adjust",
     overridden: "changed for this brew only",
@@ -52,11 +57,12 @@ const TEXT = {
     ed_hide_maintenance: "Maintenance",
     ed_hide_settings: "Settings",
     ed_name: "Title",
+    ed_show_default_profiles: "Show profiles with factory names",
     ed_device_id: "Machine (only needed with more than one)",
-    ed_show_mug_drinks: "Show mug drinks",
     ed_images: "Pictures (optional)",
     ed_device: "Machine picture (URL)",
     ed_drinks: "Drink pictures (URL with {drink})",
+    ed_tabs: "Tab pictures (URL with {tab})",
   },
   de: {
     no_device: "Keine Cremalink-Kaffeemaschine gefunden. Sie wird mit der Integration cremalink-ha eingerichtet.",
@@ -74,6 +80,11 @@ const TEXT = {
     last_report: "Gemeldet {when}",
     never: "noch keine Meldung",
     recipe: "Getränk",
+    tab_favorites: "Favoriten",
+    tab_hot: "Heiß",
+    tab_cold: "Kalt",
+    tab_togo: "To Go",
+    tab_custom: "Eigene",
     profile: "Profil",
     adjust: "Anpassen",
     overridden: "nur für diese Zubereitung geändert",
@@ -103,11 +114,12 @@ const TEXT = {
     ed_hide_maintenance: "Wartung",
     ed_hide_settings: "Einstellungen",
     ed_name: "Titel",
+    ed_show_default_profiles: "Profile mit Werksnamen zeigen",
     ed_device_id: "Maschine (nur bei mehreren nötig)",
-    ed_show_mug_drinks: "Becher-Getränke zeigen",
     ed_images: "Bilder (optional)",
     ed_device: "Bild der Maschine (URL)",
     ed_drinks: "Getränkebilder (URL mit {drink})",
+    ed_tabs: "Tab-Bilder (URL mit {tab})",
   },
 };
 
@@ -149,9 +161,32 @@ function drinkIcon(key) {
   return "mdi:coffee";
 }
 
-function isMugDrink(key) {
-  const k = String(key).toLowerCase();
-  return k.startsWith("mug_") || k.endsWith("_mug");
+const TABS = ["favorites", "hot", "cold", "togo", "custom"];
+const TAB_ICON = {
+  favorites: "mdi:heart-outline",
+  hot: "mdi:coffee",
+  cold: "mdi:cube-outline",
+  togo: "mdi:coffee-to-go-outline",
+  custom: "mdi:star-circle-outline",
+};
+
+// Tab of a drink. With the beverage id (attribute `option_beverages` of the
+// recipe select) the groups are the ones of the app and the machine:
+// 50-57 and 120-124 cold, 80-86 and 100-107 and 140-142 to go, 230-235 your own
+// recipes, 27 (brew over ice) cold, everything else hot. Without ids the
+// drink's name decides.
+function tabOf(option, id) {
+  if (Number.isInteger(id)) {
+    if (id >= 230 && id <= 235) return "custom";
+    if ((id >= 80 && id < 87) || (id >= 100 && id < 108) || (id >= 140 && id < 143)) return "togo";
+    if ((id >= 50 && id < 58) || (id >= 120 && id < 125) || id === 27) return "cold";
+    return "hot";
+  }
+  const k = String(option);
+  if (!/^[a-z0-9_]+$/.test(k)) return "custom";
+  if (k.startsWith("mug_") || k.endsWith("_mug")) return "togo";
+  if (/(iced|over_ice|cold_brew)/.test(k)) return "cold";
+  return "hot";
 }
 
 class CremalinkCard extends HTMLElement {
@@ -167,17 +202,26 @@ class CremalinkCard extends HTMLElement {
     const open = this._loadOpen();
     this._maintOpen = open.maint === true;
     this._settingsOpen = open.settings === true;
+    this._tab = TABS.includes(open.tab) ? open.tab : null;
+    // Last known drink list and profiles: the machine's selects are unavailable
+    // while it sleeps, but the card should still show what you can pick.
+    this._cache = this._loadCache();
 
     this.shadowRoot.addEventListener("click", (e) => {
       const el = e.target.closest("[data-act]");
       if (!el || el.disabled) return;
       const act = el.dataset.act;
       const entity = el.dataset.entity;
-      if (act === "drink") this._select(entity, el.dataset.value);
+      if (act === "drink" || act === "pick") this._select(entity, el.dataset.value);
       if (act === "brew") this._call("switch", "turn_on", entity);
       if (act === "power") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
       if (act === "toggle-switch") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
       if (act === "step") this._step(entity, Number(el.dataset.dir));
+      if (act === "tab") {
+        this._tab = el.dataset.value;
+        this._saveOpen();
+        this._refresh();
+      }
       if (act === "toggle-maint") {
         this._maintOpen = !this._maintOpen;
         this._saveOpen();
@@ -203,6 +247,18 @@ class CremalinkCard extends HTMLElement {
       const el = e.target.closest("select[data-act='select']");
       if (el) this._select(el.dataset.entity, el.value);
     });
+    // A picture that does not load (no file for this drink) falls back to its icon.
+    this.shadowRoot.addEventListener(
+      "error",
+      (e) => {
+        const img = e.target;
+        if (!img?.matches?.("img[data-icon]")) return;
+        const icon = document.createElement("ha-icon");
+        icon.setAttribute("icon", img.dataset.icon);
+        img.replaceWith(icon);
+      },
+      true
+    );
     this.shadowRoot.addEventListener("focusout", () => setTimeout(() => this._refresh(), 0));
     this.shadowRoot.addEventListener("focusin", (e) => {
       if (e.target.matches?.("input[data-act='type']")) e.target.select();
@@ -234,8 +290,8 @@ class CremalinkCard extends HTMLElement {
           },
         },
         { name: "name", selector: { text: {} } },
+        { name: "show_default_profiles", default: false, selector: { boolean: {} } },
         { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
-        { name: "show_mug_drinks", default: false, selector: { boolean: {} } },
         {
           type: "expandable",
           name: "images",
@@ -243,6 +299,7 @@ class CremalinkCard extends HTMLElement {
           schema: [
             { name: "device", selector: { text: {} } },
             { name: "drinks", selector: { text: {} } },
+            { name: "tabs", selector: { text: {} } },
           ],
         },
       ],
@@ -265,7 +322,7 @@ class CremalinkCard extends HTMLElement {
   }
 
   getGridOptions() {
-    return { columns: 12, min_columns: 6 };
+    return { columns: 12, min_columns: 4 };
   }
 
   setConfig(config) {
@@ -444,11 +501,51 @@ class CremalinkCard extends HTMLElement {
     }
   }
 
+  _loadCache() {
+    try {
+      return JSON.parse(localStorage.getItem("cremalink-card-cache") || "{}") || {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // Remember the lists while the selects are available.
+  _remember() {
+    const r = this._state("recipe");
+    const p = this._state("profile");
+    let changed = false;
+    if (r && r.state !== "unavailable" && Array.isArray(r.attributes.options)) {
+      const next = {
+        options: r.attributes.options,
+        ids: r.attributes.option_beverages || {},
+        favorites: r.attributes.favorite_beverages || [],
+        state: r.state,
+      };
+      if (JSON.stringify(next) !== JSON.stringify(this._cache.recipe)) {
+        this._cache.recipe = next;
+        changed = true;
+      }
+    }
+    if (p && p.state !== "unavailable" && Array.isArray(p.attributes.options)) {
+      const next = { options: p.attributes.options, state: p.state };
+      if (JSON.stringify(next) !== JSON.stringify(this._cache.profile)) {
+        this._cache.profile = next;
+        changed = true;
+      }
+    }
+    if (!changed) return;
+    try {
+      localStorage.setItem("cremalink-card-cache", JSON.stringify(this._cache));
+    } catch (e) {
+      /* storage not available */
+    }
+  }
+
   _saveOpen() {
     try {
       localStorage.setItem(
         "cremalink-card-open",
-        JSON.stringify({ maint: this._maintOpen, settings: this._settingsOpen })
+        JSON.stringify({ maint: this._maintOpen, settings: this._settingsOpen, tab: this._tab })
       );
     } catch (e) {
       /* storage not available */
@@ -502,9 +599,14 @@ class CremalinkCard extends HTMLElement {
       this._message,
       this._maintOpen,
       this._settingsOpen,
+      this._tab,
+      this._config.show_default_profiles === true,
+      Object.keys(recipeAttrs.option_beverages || {}).length,
+      (recipeAttrs.favorite_beverages || []).join(","),
     ].join("#");
     if (sig === this._sig) return;
     this._sig = sig;
+    this._remember();
     this._render();
   }
 
@@ -623,6 +725,13 @@ class CremalinkCard extends HTMLElement {
     return `<div class="alarms" role="status"><div class="alarms-title">${this._t("alarms")}</div><div class="chips">${chips}</div></div>`;
   }
 
+  _tabVisual(tab) {
+    const pattern = this._config.images?.tabs;
+    return pattern
+      ? `<img class="t-pic" src="${String(pattern).replace("{tab}", tab)}" data-icon="${TAB_ICON[tab]}" alt="">`
+      : `<ha-icon icon="${TAB_ICON[tab]}"></ha-icon>`;
+  }
+
   _drinkPicture(key) {
     const pattern = this._config.images?.drinks;
     return pattern ? String(pattern).replace("{drink}", key) : null;
@@ -630,24 +739,48 @@ class CremalinkCard extends HTMLElement {
 
   _recipes(f) {
     const st = this._state("recipe");
-    if (!st || st.state === "unavailable") return "";
-    const all = st.attributes.options || [];
+    if (!st) return "";
+    // While the machine sleeps the select is unavailable: show the last known list, dimmed.
+    const live = st.state !== "unavailable";
+    const known = live
+      ? { options: st.attributes.options, ids: st.attributes.option_beverages, favorites: st.attributes.favorite_beverages, state: st.state }
+      : this._cache.recipe;
+    if (!known || !Array.isArray(known.options)) return "";
+    const all = known.options || [];
+    const ids = known.ids || {};
+    const locked = !live || f.running;
     const wanted = Array.isArray(this._config.drinks) ? this._config.drinks : null;
-    const showMug = this._config.show_mug_drinks === true;
-    const options = all.filter((o) => (wanted ? wanted.includes(o) : showMug || !isMugDrink(o)));
-    const tiles = options
+    const options = all.filter((o) => (wanted ? wanted.includes(o) : true));
+    // keep the machine's order inside each tab (the options come in menu order)
+    const groups = { favorites: [], hot: [], cold: [], togo: [], custom: [] };
+    for (const o of options) groups[tabOf(o, ids[o])].push(o);
+    // favourites of the active profile, in the machine's favourite order
+    const byId = Object.fromEntries(options.filter((o) => Number.isInteger(ids[o])).map((o) => [ids[o], o]));
+    groups.favorites = (known.favorites || []).map((id) => byId[id]).filter(Boolean);
+    // to go: hot first, then cold, like the machine's display
+    const present = TABS.filter((t) => groups[t].length);
+    if (!present.length) return "";
+    const current = options.includes(known.state) ? tabOf(known.state, ids[known.state]) : null;
+    const tab = this._tab && present.includes(this._tab) ? this._tab : present.includes(current) ? current : present[0];
+    const tabs = present
+      .map(
+        (t) => `<button class="tab ${t === tab ? "on" : ""}" role="tab" aria-selected="${t === tab}"
+          data-act="tab" data-value="${t}">${this._tabVisual(t)}<span>${this._t(`tab_${t}`)}</span></button>`
+      )
+      .join("");
+    const tiles = groups[tab]
       .map((o) => {
-        const sel = o === st.state;
+        const sel = live && o === st.state;
         const picture = this._drinkPicture(o);
         const visual = picture
-          ? `<img class="d-pic" src="${picture}" alt="" loading="lazy">`
+          ? `<img class="d-pic" src="${picture}" data-icon="${drinkIcon(o)}" alt="" loading="lazy">`
           : `<ha-icon icon="${drinkIcon(o)}"></ha-icon>`;
         return `<button class="drink ${sel ? "sel" : ""}" data-act="drink" data-entity="${st.entity_id}" data-value="${o}"
-            aria-pressed="${sel}" ${f.running ? "disabled" : ""}>
+            aria-pressed="${sel}" ${locked ? "disabled" : ""}>
             ${visual}<span class="d-name">${this._hass.formatEntityState(st, o)}</span></button>`;
       })
       .join("");
-    return `<div class="section"><div class="section-title">${this._t("recipe")}</div><div class="drinks">${tiles}</div></div>`;
+    return `<div class="section"><div class="tabs" role="tablist">${tabs}</div><div class="drinks">${tiles}</div></div>`;
   }
 
   _sliders(f) {
@@ -659,7 +792,7 @@ class CremalinkCard extends HTMLElement {
         return `<div class="slider"><div class="s-label">${this._label(st)}${over}</div>${this._stepper(st)}</div>`;
       })
       .join("");
-    return `<div class="section"><div class="section-title">${this._t("adjust")}</div><div class="sliders">${rows}</div></div>`;
+    return `<div class="section"><div class="sliders">${rows}</div></div>`;
   }
 
   _brew(f) {
@@ -678,10 +811,29 @@ class CremalinkCard extends HTMLElement {
       </div>`;
   }
 
+  // Profiles as buttons. A profile still carrying the factory name ("<word> <slot>",
+  // e.g. "Explorer 3" in slot 3) is not set up and is left out, except the active one.
   _profile() {
     const st = this._state("profile");
-    if (!st || st.state === "unavailable") return "";
-    return `<div class="row"><div class="row-label">${this._t("profile")}</div>${this._dropdown(st.entity_id)}</div>`;
+    if (!st) return "";
+    const live = st.state !== "unavailable";
+    const known = live ? { options: st.attributes.options, state: st.state } : this._cache.profile;
+    if (!known || !Array.isArray(known.options)) return "";
+    const all = known.options;
+    const showAll = this._config.show_default_profiles === true;
+    const options = all.filter(
+      (o, i) => showAll || o === known.state || !new RegExp(`^\\D+\\s*${i + 1}$`).test(String(o).trim())
+    );
+    if (!options.length) return "";
+    const brewing = !live || this._state("brew_recipe")?.state === "on";
+    const buttons = options
+      .map((o) => {
+        const sel = o === known.state;
+        return `<button class="seg-btn ${sel ? "on" : ""}" role="radio" aria-checked="${sel}" data-act="pick"
+          data-entity="${st.entity_id}" data-value="${o}" ${brewing ? "disabled" : ""}>${this._hass.formatEntityState(st, o)}</button>`;
+      })
+      .join("");
+    return `<div class="section-title">${this._t("profile")}</div><div class="seg" role="radiogroup">${buttons}</div>`;
   }
 
   _bar(tk, label) {
@@ -756,13 +908,15 @@ class CremalinkCard extends HTMLElement {
     if (!hide.includes("header")) body += this._header(f);
     if (!hide.includes("alarms")) body += this._alarms();
     if (mode !== "status") {
-      if (!hide.includes("recipes")) body += this._recipes(f);
-      if (!hide.includes("sliders")) body += this._sliders(f);
-      body += this._brew(f);
+      // The profile decides the drink order and the favourites, so it comes first.
       if (!hide.includes("profile")) {
         const p = this._profile();
         if (p) body += `<div class="section">${p}</div>`;
       }
+      const left = hide.includes("recipes") ? "" : this._recipes(f);
+      let right = hide.includes("sliders") ? "" : this._sliders(f);
+      right += this._brew(f);
+      body += `<div class="main"><div class="col">${left}</div><div class="col">${right}</div></div>`;
     }
     if (mode !== "control") {
       if (!hide.includes("maintenance")) body += this._maintenance();
@@ -771,7 +925,7 @@ class CremalinkCard extends HTMLElement {
     body += `<div class="msg">${this._message}</div>`;
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display: block; }
+        :host { display: block; container-type: inline-size; }
         ha-card { padding: 12px 14px; }
         .head { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; column-gap: 14px; align-items: center;
           padding: 10px 12px; border-radius: var(--ha-card-border-radius, 12px); background: var(--secondary-background-color); }
@@ -791,7 +945,36 @@ class CremalinkCard extends HTMLElement {
         .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; color: var(--warning-color); }
         .chip ha-icon { --mdc-icon-size: 18px; }
 
+        .main { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 16px; }
+        .col:empty { display: none; }
         .section { margin-top: 14px; }
+        .seg, .tabs { display: flex; margin-bottom: 8px; overflow: hidden; border: 1px solid var(--divider-color);
+          border-radius: var(--ha-card-border-radius, 12px); }
+        .tab, .seg-btn { all: unset; box-sizing: border-box; flex: 1 1 0; min-width: 0; min-height: 36px; padding: 0 10px;
+          display: flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
+          font-size: 14px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .tab + .tab, .seg-btn + .seg-btn { border-left: 1px solid var(--divider-color); }
+        .tab { gap: 6px; }
+        .tab ha-icon { --mdc-icon-size: 20px; flex: none; }
+        .t-pic { width: 24px; height: 24px; object-fit: contain; flex: none; }
+        .tab span { overflow: hidden; text-overflow: ellipsis; }
+        .tab:hover, .seg-btn:hover { background: var(--secondary-background-color); }
+        .tab.on, .seg-btn.on { background: var(--primary-color); color: var(--text-primary-color); }
+        .tab:focus-visible, .seg-btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
+        .seg-btn[disabled] { opacity: .5; cursor: default; pointer-events: none; }
+        @container (min-width: 620px) {
+          .main { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
+          .drinks { max-height: 340px; }
+        }
+        @container (max-width: 360px) {
+          ha-card { padding: 10px; }
+          .head { grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 10px; }
+          .icon { --mdc-icon-size: 34px; }
+          .status { font-size: 18px; }
+          .drinks { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); }
+          .d-name { font-size: 11px; }
+          .tab, .seg-btn { padding: 0 4px; font-size: 13px; }
+        }
         .section-title { font-size: 14px; color: var(--secondary-text-color); margin-bottom: 6px; }
         .drinks { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px;
           max-height: 232px; overflow-y: auto; padding: 2px; }
@@ -808,7 +991,7 @@ class CremalinkCard extends HTMLElement {
         .drink:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
         .drink[disabled] { opacity: .5; cursor: default; pointer-events: none; }
 
-        .sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+        .sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
         .s-label { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 2px; }
         .hint { font-size: 12px; color: var(--secondary-text-color); }
         .hint.center { text-align: center; margin-top: 6px; }
