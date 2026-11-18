@@ -57,6 +57,7 @@ const TEXT = {
     ed_hide_maintenance: "Maintenance",
     ed_hide_settings: "Settings",
     ed_name: "Title",
+    ed_tab_labels: "Show the text on the tabs",
     ed_show_default_profiles: "Show profiles with factory names",
     ed_device_id: "Machine (only needed with more than one)",
     ed_images: "Pictures (optional)",
@@ -114,6 +115,7 @@ const TEXT = {
     ed_hide_maintenance: "Wartung",
     ed_hide_settings: "Einstellungen",
     ed_name: "Titel",
+    ed_tab_labels: "Text auf den Tabs zeigen",
     ed_show_default_profiles: "Profile mit Werksnamen zeigen",
     ed_device_id: "Maschine (nur bei mehreren nötig)",
     ed_images: "Bilder (optional)",
@@ -290,6 +292,7 @@ class CremalinkCard extends HTMLElement {
           },
         },
         { name: "name", selector: { text: {} } },
+        { name: "tab_labels", default: true, selector: { boolean: {} } },
         { name: "show_default_profiles", default: false, selector: { boolean: {} } },
         { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
         {
@@ -620,6 +623,7 @@ class CremalinkCard extends HTMLElement {
       this._settingsOpen,
       this._tab,
       this._config.show_default_profiles === true,
+      this._config.tab_labels !== false,
       Object.keys(recipeAttrs.option_beverages || {}).length,
       (recipeAttrs.favorite_beverages || []).join(","),
     ].join("#");
@@ -781,10 +785,11 @@ class CremalinkCard extends HTMLElement {
     if (!present.length) return "";
     const current = options.includes(known.state) ? tabOf(known.state, ids[known.state]) : null;
     const tab = this._tab && present.includes(this._tab) ? this._tab : present.includes(current) ? current : present[0];
+    const labels = this._config.tab_labels !== false;
     const tabs = present
       .map(
         (t) => `<button class="tab ${t === tab ? "on" : ""}" role="tab" aria-selected="${t === tab}"
-          data-act="tab" data-value="${t}">${this._tabVisual(t)}<span>${this._t(`tab_${t}`)}</span></button>`
+          data-act="tab" data-value="${t}" title="${this._t(`tab_${t}`)}" aria-label="${this._t(`tab_${t}`)}">${this._tabVisual(t)}${labels ? `<span>${this._t(`tab_${t}`)}</span>` : ""}</button>`
       )
       .join("");
     const tiles = groups[tab]
@@ -799,7 +804,7 @@ class CremalinkCard extends HTMLElement {
             ${visual}<span class="d-name">${this._hass.formatEntityState(st, o)}</span></button>`;
       })
       .join("");
-    return `<div class="section"><div class="tabs" role="tablist">${tabs}</div><div class="drinks">${tiles}</div></div>`;
+    return `<div class="section"><div class="tabs ${labels ? "" : "icons"}" role="tablist">${tabs}</div><div class="drinks">${tiles}</div></div>`;
   }
 
   _sliders(f) {
@@ -973,10 +978,11 @@ class CremalinkCard extends HTMLElement {
           display: flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
           font-size: 14px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tab + .tab, .seg-btn + .seg-btn { border-left: 1px solid var(--divider-color); }
-        .tab { gap: 8px; min-height: 48px; }
+        .tab { flex-direction: column; gap: 2px; padding: 6px 4px; min-height: 64px; font-size: 13px; }
         .tab ha-icon { --mdc-icon-size: 28px; flex: none; }
         .t-pic { width: 36px; height: 36px; object-fit: contain; flex: none; }
-        .tab span { overflow: hidden; text-overflow: ellipsis; }
+        .tab span { overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+        .tabs.icons .tab { min-height: 52px; }
         .tab:hover, .seg-btn:hover { background: var(--secondary-background-color); }
         .tab.on, .seg-btn.on { background: var(--primary-color); color: var(--text-primary-color); }
         .tab:focus-visible, .seg-btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
@@ -986,7 +992,7 @@ class CremalinkCard extends HTMLElement {
           .drinks { max-height: 340px; }
         }
         @container (max-width: 480px) {
-          .tab { flex-direction: column; gap: 2px; padding: 4px 2px; min-height: 60px; font-size: 12px; }
+          .tab { font-size: 12px; padding: 4px 2px; }
         }
         @container (max-width: 360px) {
           ha-card { padding: 10px; }

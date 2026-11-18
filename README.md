@@ -58,6 +58,7 @@ The card adapts to the width it gets on the dashboard: on a wide card the drinks
 | `hide` | – | Sections to hide: `header`, `recipes`, `sliders`, `profile`, `alarms`, `maintenance`, `settings` |
 | `name` | device name | Title in the header |
 | `device_id` | first machine | Device of the machine |
+| `tab_labels` | `true` | Show the text under the tab icons; `false` shows the icons only |
 | `show_default_profiles` | `false` | Also show profiles that still have their factory name ("Explorer 2" …) |
 | `drinks` | all | YAML only: list of drink keys to show, e.g. `[espresso, cappuccino, tea]` |
 | `images.device` | – | URL of a picture of your machine |
