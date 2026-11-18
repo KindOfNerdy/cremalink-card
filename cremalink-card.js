@@ -375,7 +375,7 @@ class CremalinkCard extends HTMLElement {
     }
     if (!deviceId) return null;
     const deviceName = hass.devices?.[deviceId]?.name || "";
-    const found = { deviceId, deviceName, entities: {}, alarms: [] };
+    const found = { deviceId, deviceName, entities: {}, alarms: [], prefix: "" };
     for (const [id, reg] of Object.entries(hass.entities)) {
       if (reg.device_id !== deviceId || reg.platform !== "cremalink_ha" || !reg.translation_key) continue;
       const tk = reg.translation_key;
@@ -383,6 +383,16 @@ class CremalinkCard extends HTMLElement {
       if (id.startsWith("binary_sensor.") && (tk.startsWith("alarm_") || EXTRA_ALARMS.includes(tk))) {
         found.alarms.push(id);
       }
+    }
+    // Entity names start with the device name (as set in the registry, which can differ
+    // from the device's original name): take what all of the device's names share.
+    const names = Object.values(found.entities)
+      .map((id) => String(hass.states[id]?.attributes?.friendly_name || "").split(" "))
+      .filter((w) => w.length > 1);
+    if (names.length > 2) {
+      let n = 0;
+      while (names.every((w) => w[n] !== undefined && w[n] === names[0][n]) && n < names[0].length - 1) n++;
+      found.prefix = names[0].slice(0, n).join(" ");
     }
     return found;
   }
@@ -396,8 +406,17 @@ class CremalinkCard extends HTMLElement {
     return id ? this._hass.states[id] : undefined;
   }
 
+  // Entity name without the device name in front of it.
   _label(st) {
-    return (st?.attributes?.friendly_name || "").replace(this._found.deviceName, "").trim();
+    let name = String(st?.attributes?.friendly_name || "");
+    const drop = [this._found.prefix, this._found.deviceName, this._config.name];
+    for (const prefix of drop) {
+      if (prefix && name.startsWith(prefix + " ")) {
+        name = name.slice(prefix.length + 1);
+        break;
+      }
+    }
+    return name.trim();
   }
 
   // What can be done right now.
