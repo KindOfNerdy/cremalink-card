@@ -19,6 +19,7 @@ const TEXT = {
     hint_loading: "Loading the recipe values from the machine …",
     hint_defaults: "Showing factory values – the profile's values are still being read.",
     hint_busy: "The machine is busy.",
+    hint_pot: "The pot can only be set and started on the machine itself.",
     hint_unavailable: "The machine does not accept a brew right now.",
     last_report: "Reported {when}",
     never: "no report yet",
@@ -78,6 +79,7 @@ const TEXT = {
     hint_loading: "Die Rezeptwerte werden von der Maschine geladen …",
     hint_defaults: "Es werden Werkswerte gezeigt – die Werte des Profils werden noch gelesen.",
     hint_busy: "Die Maschine ist beschäftigt.",
+    hint_pot: "Die Kanne lässt sich nur an der Maschine selbst einstellen und starten.",
     hint_unavailable: "Die Maschine nimmt gerade keine Zubereitung an.",
     last_report: "Gemeldet {when}",
     never: "noch keine Meldung",
@@ -131,6 +133,9 @@ function uiText(key) {
   const lang = (document.documentElement.lang || navigator.language || "en").split("-")[0];
   return (TEXT[lang] || TEXT.en)[key] || TEXT.en[key] || key;
 }
+
+// Coffee pot and cold brew pot: the app only offers them on the machine (cups are set there).
+const POT_IDS = [23, 122];
 
 const EMPTY = ["unknown", "unavailable", "none", ""];
 const STANDBY = ["in_standby", "going_to_sleep", "sleeping", "deep_sleep"];
@@ -433,11 +438,14 @@ class CremalinkCard extends HTMLElement {
     const waking = status === "waking_up";
     const running = brew?.state === "on";
     const values = recipe?.attributes?.values_source;
+    const selectedId = recipe?.attributes?.selected_beverage;
+    const pot = POT_IDS.includes(Number(selectedId));
     const params = PARAMS.map((tk) => this._state(tk)).filter((s) => s && !EMPTY.includes(s.state));
     const brewAvailable = brew && brew.state !== "unavailable";
     let hint = "";
     if (standby) hint = "hint_standby";
     else if (waking) hint = "hint_waking";
+    else if (pot) hint = "hint_pot";
     else if (recipe && recipe.state !== "unavailable" && !params.length && !running) hint = "hint_loading";
     else if (values === "default" && !running) hint = "hint_defaults";
     else if (!brewAvailable) hint = "hint_unavailable";
@@ -449,7 +457,8 @@ class CremalinkCard extends HTMLElement {
       running,
       values,
       params,
-      canBrew: Boolean(brewAvailable) && !running && !standby && !waking && IDLE.includes(status) && params.length > 0,
+      pot,
+      canBrew: Boolean(brewAvailable) && !running && !standby && !waking && !pot && IDLE.includes(status) && params.length > 0,
       hint,
     };
   }
@@ -810,7 +819,7 @@ class CremalinkCard extends HTMLElement {
   }
 
   _sliders(f) {
-    if (!f.params.length) return "";
+    if (!f.params.length || f.pot) return "";
     const recipe = this._state("recipe");
     const rows = f.params
       .map((st) => {
