@@ -12,6 +12,8 @@ const TEXT = {
     brew: "Brew",
     brewing: "Brewing …",
     starting: "Starting …",
+    stop: "Stop",
+    stopping: "Stopping …",
     power_on: "Switch on",
     power_off: "Switch off",
     hint_standby: "The machine is in standby. Switch it on to brew.",
@@ -76,6 +78,8 @@ const TEXT = {
     brew: "Zubereiten",
     brewing: "Läuft …",
     starting: "Startet …",
+    stop: "Stopp",
+    stopping: "Stoppt …",
     power_on: "Einschalten",
     power_off: "Ausschalten",
     hint_standby: "Die Maschine ist im Standby. Zum Zubereiten erst einschalten.",
@@ -247,6 +251,7 @@ class CremalinkCard extends HTMLElement {
       const entity = el.dataset.entity;
       if (act === "drink" || act === "pick") this._select(entity, el.dataset.value);
       if (act === "brew") this._call("switch", "turn_on", entity);
+      if (act === "stop") this._call("switch", "turn_off", entity);
       if (act === "power") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
       if (act === "toggle-switch") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
       if (act === "step") this._step(entity, Number(el.dataset.dir));
@@ -905,9 +910,17 @@ class CremalinkCard extends HTMLElement {
     const brew = this._state("brew_recipe");
     if (!brew) return "";
     const busy = this._busy.has(brew.entity_id);
-    const label = f.running ? this._t("brewing") : busy ? this._t("starting") : this._t("brew");
-    const icon = f.running || busy ? "mdi:loading" : "mdi:coffee";
-    const spin = f.running || busy ? "spin" : "";
+    if (f.running) {
+      const label = busy ? this._t("stopping") : this._t("stop");
+      return `
+      <div class="brew">
+        <button class="btn big stop" data-act="stop" data-entity="${brew.entity_id}" ${busy ? "disabled" : ""}>
+          <ha-icon icon="${busy ? "mdi:loading" : "mdi:stop"}" class="${busy ? "spin" : ""}"></ha-icon><span>${label}</span></button>
+      </div>`;
+    }
+    const label = busy ? this._t("starting") : this._t("brew");
+    const icon = busy ? "mdi:loading" : "mdi:coffee";
+    const spin = busy ? "spin" : "";
     const enabled = f.canBrew && !busy;
     return `
       <div class="brew">
@@ -1140,6 +1153,8 @@ class CremalinkCard extends HTMLElement {
         .btn ha-icon { --mdc-icon-size: 20px; }
         .btn.primary { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color); }
         .btn.primary:hover { filter: brightness(1.08); }
+        .btn.stop { background: var(--error-color, #db4437); border-color: var(--error-color, #db4437); color: #fff; }
+        .btn.stop:hover { filter: brightness(1.08); }
         .btn.big { width: 100%; min-height: 48px; font-size: 16px; font-weight: 600; }
         .brew { margin-top: 14px; }
         button[disabled], select[disabled] { opacity: .4; cursor: default; pointer-events: none; }
