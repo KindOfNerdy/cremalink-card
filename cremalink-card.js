@@ -32,6 +32,10 @@ const TEXT = {
     profile: "Profile",
     adjust: "Adjust",
     overridden: "changed for this brew only",
+    tea_0: "White tea",
+    tea_1: "Green tea",
+    tea_2: "Oolong tea",
+    tea_3: "Black tea",
     maintenance: "Maintenance",
     grounds: "Grounds container",
     descale: "Descaling",
@@ -92,6 +96,10 @@ const TEXT = {
     profile: "Profil",
     adjust: "Anpassen",
     overridden: "nur für diese Zubereitung geändert",
+    tea_0: "Weißer Tee",
+    tea_1: "Grüner Tee",
+    tea_2: "Oolong Tee",
+    tea_3: "Schwarzer Tee",
     maintenance: "Wartung",
     grounds: "Satzbehälter",
     descale: "Entkalkung",
@@ -660,13 +668,20 @@ class CremalinkCard extends HTMLElement {
     return rtf.format(Math.round(hours / 24), "day");
   }
 
-  _fmt(v, unit) {
+  _fmt(v, unit, tk) {
+    // the tea "temperature" has four steps; the machine names them after the tea types
+    if (tk === "param_the_temp" && Number.isInteger(Number(v)) && this._t(`tea_${v}`) !== `tea_${v}`) return this._t(`tea_${v}`);
     return unit ? `${v} ${unit}` : `${v}`;
+  }
+
+  _tkOf(entityId) {
+    return Object.keys(this._found.entities).find((k) => this._found.entities[k] === entityId);
   }
 
   // Value in the middle of a stepper: a native picker when the list of allowed
   // values is short enough, otherwise a typed field.
   _valueField(entity, st, value, unit, off) {
+    const tk = this._tkOf(entity);
     const a = st.attributes;
     const min = Number(a.min);
     const max = Number(a.max);
@@ -681,7 +696,7 @@ class CremalinkCard extends HTMLElement {
         values.sort((x, y) => x - y);
       }
       const options = values
-        .map((v) => `<option value="${v}" ${v === value ? "selected" : ""}>${this._fmt(v, unit)}</option>`)
+        .map((v) => `<option value="${v}" ${v === value ? "selected" : ""}>${this._fmt(v, unit, tk)}</option>`)
         .join("");
       return `<select class="pick" data-act="value" data-entity="${entity}" aria-label="${label}" ${off}>${options}</select>`;
     }
@@ -823,7 +838,7 @@ class CremalinkCard extends HTMLElement {
     const recipe = this._state("recipe");
     const rows = f.params
       .map((st) => {
-        const over = st.attributes.overridden ? `<span class="hint"> · ${this._t("overridden")}</span>` : "";
+        const over = st.attributes.overridden ? `<span class="dot" title="${this._t("overridden")}" aria-label="${this._t("overridden")}"></span>` : "";
         return `<div class="slider"><div class="s-label">${this._label(st)}${over}</div>${this._stepper(st)}</div>`;
       })
       .join("");
@@ -1032,7 +1047,8 @@ class CremalinkCard extends HTMLElement {
         .drink[disabled] { opacity: .5; cursor: default; pointer-events: none; }
 
         .sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
-        .s-label { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 2px; }
+        .s-label { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .dot { display: inline-block; width: 8px; height: 8px; margin-left: 6px; border-radius: 50%; background: var(--primary-color); vertical-align: middle; }
         .hint { font-size: 12px; color: var(--secondary-text-color); }
         .hint.center { text-align: center; margin-top: 6px; }
 
