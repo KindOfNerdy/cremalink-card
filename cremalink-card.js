@@ -187,6 +187,12 @@ function drinkIcon(key) {
   return "mdi:coffee";
 }
 
+// To go drinks are chosen hot or cold on the machine as well: 100-107 and 140-142 are cold.
+function togoKind(option, id) {
+  if (Number.isInteger(id)) return (id >= 100 && id < 108) || (id >= 140 && id < 143) ? "cold" : "hot";
+  return /(iced|over_ice|cold_brew)/.test(String(option)) ? "cold" : "hot";
+}
+
 const TABS = ["favorites", "hot", "cold", "togo", "custom"];
 const TAB_ICON = {
   favorites: "mdi:heart-outline",
@@ -229,6 +235,7 @@ class CremalinkCard extends HTMLElement {
     this._maintOpen = open.maint === true;
     this._settingsOpen = open.settings === true;
     this._tab = TABS.includes(open.tab) ? open.tab : null;
+    this._togo = open.togo === "cold" ? "cold" : open.togo === "hot" ? "hot" : null;
     // Last known drink list and profiles: the machine's selects are unavailable
     // while it sleeps, but the card should still show what you can pick.
     this._cache = this._loadCache();
@@ -245,6 +252,11 @@ class CremalinkCard extends HTMLElement {
       if (act === "step") this._step(entity, Number(el.dataset.dir));
       if (act === "tab") {
         this._tab = el.dataset.value;
+        this._saveOpen();
+        this._refresh();
+      }
+      if (act === "togo") {
+        this._togo = el.dataset.value;
         this._saveOpen();
         this._refresh();
       }
@@ -603,7 +615,7 @@ class CremalinkCard extends HTMLElement {
     try {
       localStorage.setItem(
         "cremalink-card-open",
-        JSON.stringify({ maint: this._maintOpen, settings: this._settingsOpen, tab: this._tab })
+        JSON.stringify({ maint: this._maintOpen, settings: this._settingsOpen, tab: this._tab, togo: this._togo })
       );
     } catch (e) {
       /* storage not available */
@@ -661,6 +673,7 @@ class CremalinkCard extends HTMLElement {
       this._maintOpen,
       this._settingsOpen,
       this._tab,
+      this._togo,
       this._config.show_default_profiles === true,
       this._config.tab_labels !== false,
       Object.keys(recipeAttrs.option_beverages || {}).length,
@@ -841,7 +854,25 @@ class CremalinkCard extends HTMLElement {
           data-act="tab" data-value="${t}" title="${this._t(`tab_${t}`)}" aria-label="${this._t(`tab_${t}`)}">${this._tabVisual(t)}${labels ? `<span>${this._t(`tab_${t}`)}</span>` : ""}</button>`
       )
       .join("");
-    const tiles = groups[tab]
+    let shown = groups[tab];
+    let sub = "";
+    if (tab === "togo") {
+      const kinds = { hot: [], cold: [] };
+      for (const o of shown) kinds[togoKind(o, ids[o])].push(o);
+      const both = kinds.hot.length && kinds.cold.length;
+      if (both) {
+        const selKind = options.includes(known.state) && tabOf(known.state, ids[known.state]) === "togo" ? togoKind(known.state, ids[known.state]) : null;
+        const kind = this._togo && kinds[this._togo].length ? this._togo : selKind || "hot";
+        shown = kinds[kind];
+        sub = `<div class="seg sub" role="radiogroup">${["hot", "cold"]
+          .map(
+            (k) => `<button class="seg-btn ${k === kind ? "on" : ""}" role="radio" aria-checked="${k === kind}" data-act="togo" data-value="${k}">
+              <ha-icon icon="${TAB_ICON[k]}"></ha-icon>${this._t(`tab_${k}`)}</button>`
+          )
+          .join("")}</div>`;
+      }
+    }
+    const tiles = shown
       .map((o) => {
         const sel = live && o === st.state;
         // a custom recipe is drawn like the drink its picture number stands for
@@ -855,7 +886,7 @@ class CremalinkCard extends HTMLElement {
             ${visual}<span class="d-name">${this._hass.formatEntityState(st, o)}</span></button>`;
       })
       .join("");
-    return `<div class="section"><div class="tabs ${labels ? "" : "icons"}" role="tablist">${tabs}</div><div class="drinks">${tiles}</div></div>`;
+    return `<div class="section"><div class="tabs ${labels ? "" : "icons"}" role="tablist">${tabs}</div>${sub}<div class="drinks">${tiles}</div></div>`;
   }
 
   _sliders(f) {
@@ -1043,6 +1074,9 @@ class CremalinkCard extends HTMLElement {
         .tab:hover, .seg-btn:hover { background: var(--secondary-background-color); }
         .tab.on, .seg-btn.on { background: var(--primary-color); color: var(--text-primary-color); }
         .tab:focus-visible, .seg-btn:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
+        .seg.sub { margin: -2px 0 8px; }
+        .seg.sub .seg-btn { min-height: 34px; gap: 6px; }
+        .seg.sub ha-icon { --mdc-icon-size: 18px; }
         .seg-btn[disabled] { opacity: .5; cursor: default; pointer-events: none; }
         @container (min-width: 620px) {
           .main { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
