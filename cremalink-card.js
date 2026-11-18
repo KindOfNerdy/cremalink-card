@@ -973,9 +973,9 @@ class CremalinkCard extends HTMLElement {
           display: flex; align-items: center; justify-content: center; text-align: center; cursor: pointer;
           font-size: 14px; color: var(--secondary-text-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .tab + .tab, .seg-btn + .seg-btn { border-left: 1px solid var(--divider-color); }
-        .tab { gap: 6px; }
-        .tab ha-icon { --mdc-icon-size: 20px; flex: none; }
-        .t-pic { width: 24px; height: 24px; object-fit: contain; flex: none; }
+        .tab { gap: 8px; min-height: 48px; }
+        .tab ha-icon { --mdc-icon-size: 28px; flex: none; }
+        .t-pic { width: 36px; height: 36px; object-fit: contain; flex: none; }
         .tab span { overflow: hidden; text-overflow: ellipsis; }
         .tab:hover, .seg-btn:hover { background: var(--secondary-background-color); }
         .tab.on, .seg-btn.on { background: var(--primary-color); color: var(--text-primary-color); }
@@ -985,6 +985,9 @@ class CremalinkCard extends HTMLElement {
           .main { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); }
           .drinks { max-height: 340px; }
         }
+        @container (max-width: 480px) {
+          .tab { flex-direction: column; gap: 2px; padding: 4px 2px; min-height: 60px; font-size: 12px; }
+        }
         @container (max-width: 360px) {
           ha-card { padding: 10px; }
           .head { grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 10px; }
@@ -992,7 +995,7 @@ class CremalinkCard extends HTMLElement {
           .status { font-size: 18px; }
           .drinks { grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); }
           .d-name { font-size: 11px; }
-          .tab, .seg-btn { padding: 0 4px; font-size: 13px; }
+          .seg-btn { padding: 0 4px; font-size: 13px; }
         }
         .section-title { font-size: 14px; color: var(--secondary-text-color); margin-bottom: 6px; }
         .drinks { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px;
