@@ -215,6 +215,9 @@ const TAB_ICON = {
 // 50-57 and 120-124 cold, 80-86 and 100-107 and 140-142 to go, 230-235 your own
 // recipes, 27 (brew over ice) cold, everything else hot. Without ids the
 // drink's name decides.
+// Machine states that always mean a hot drink (also when it was started on the machine).
+const HOT_STATUSES = ["dispensing_hot_water", "preparing_steam"];
+
 // "hot" or "cold" for a drink, from the tab it belongs to (custom recipes: from their picture).
 function drinkKind(option, id, icons) {
   const tab = tabOf(option, id);
@@ -795,10 +798,13 @@ class CremalinkCard extends HTMLElement {
     return drinkKind(st.state, Number.isInteger(id) ? id : undefined, st.attributes?.option_icons);
   }
 
-  // The kind of the drink that is being made, only when it is certain: the drink was
-  // started with this card. For a drink started on the machine the monitor does not say
-  // whether it is hot or cold, so nothing is claimed (null).
+  // The kind of the drink that is being made, only when it is certain: the machine's own
+  // status says hot water, tea or steam, or the drink was started with this card. For other
+  // drinks started on the machine the monitor does not say whether they are hot or cold,
+  // so nothing is claimed (null).
   _runningKind(f) {
+    // hot water, tea and steam are hot whoever started them (the machine says so in its status)
+    if (HOT_STATUSES.includes(f.status)) return "hot";
     if (f.running) this._sawRunning = true;
     else if (this._sawRunning) {
       this._started = null;
