@@ -215,6 +215,17 @@ const TAB_ICON = {
 // 50-57 and 120-124 cold, 80-86 and 100-107 and 140-142 to go, 230-235 your own
 // recipes, 27 (brew over ice) cold, everything else hot. Without ids the
 // drink's name decides.
+// "hot" or "cold" for a drink, from the tab it belongs to (custom recipes: from their picture).
+function drinkKind(option, id, icons) {
+  const tab = tabOf(option, id);
+  if (tab === "cold") return "cold";
+  if (tab === "togo") return togoKind(option, id);
+  if (tab === "custom") {
+    const key = SYMBOL_DRINK[(icons || {})[option]];
+    return /(iced|over_ice|cold)/.test(String(key || "")) ? "cold" : "hot";
+  }
+  return "hot";
+}
 function tabOf(option, id) {
   if (Number.isInteger(id)) {
     if (id >= 230 && id <= 235) return "custom";
@@ -254,7 +265,10 @@ class CremalinkCard extends HTMLElement {
       const act = el.dataset.act;
       const entity = el.dataset.entity;
       if (act === "drink" || act === "pick") this._select(entity, el.dataset.value);
-      if (act === "brew") this._call("switch", "turn_on", entity);
+      if (act === "brew") {
+        this._started = { kind: this._selectedKind(), at: Date.now() };
+        this._call("switch", "turn_on", entity);
+      }
       if (act === "stop") this._call("switch", "turn_off", entity);
       if (act === "power") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
       if (act === "toggle-switch") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
@@ -773,6 +787,28 @@ class CremalinkCard extends HTMLElement {
     return `<select data-act="select" data-entity="${entity}" aria-label="${this._label(st)}" ${enabled ? "" : "disabled"}>${options}</select>`;
   }
 
+  // hot or cold: the drink currently selected in the recipe picker
+  _selectedKind() {
+    const st = this._state("recipe");
+    if (!st || st.state === "unavailable") return null;
+    const id = st.attributes?.selected_beverage;
+    return drinkKind(st.state, Number.isInteger(id) ? id : undefined, st.attributes?.option_icons);
+  }
+
+  // The kind of the drink that is being made, only when it is certain: the drink was
+  // started with this card. For a drink started on the machine the monitor does not say
+  // whether it is hot or cold, so nothing is claimed (null).
+  _runningKind(f) {
+    if (f.running) this._sawRunning = true;
+    else if (this._sawRunning) {
+      this._started = null;
+      this._sawRunning = false;
+    }
+    const s = this._started;
+    if (!f.running || !s || Date.now() - s.at > 10 * 60 * 1000) return null;
+    return s.kind;
+  }
+
   _header(f) {
     const hass = this._hass;
     const status = this._state("cremalink_status_name");
@@ -794,6 +830,9 @@ class CremalinkCard extends HTMLElement {
     const progress = this._state("cremalink_progress_percent");
     const pct = progress && !EMPTY.includes(progress.state) ? Number(progress.state) : 0;
     const showBar = f.running || (pct > 0 && pct < 100 && !IDLE.includes(f.status) && !f.standby);
+    // warm drinks orange, cold drinks blue (theme colours); unknown keeps the status colour
+    const kind = this._runningKind(f);
+    const barColor = kind === "hot" ? "var(--warning-color, #ff9800)" : kind === "cold" ? "var(--info-color, #2196f3)" : color;
     return `
       <div class="head">
         <div class="visual">${visual}</div>
@@ -803,7 +842,7 @@ class CremalinkCard extends HTMLElement {
           ${report ? `<div class="sub">${this._t("last_report", { when: this._since(report.state) })}</div>` : ""}
         </div>
         ${powerBtn}
-        ${showBar ? `<div class="bar"><div style="width:${Math.min(100, Math.max(0, pct))}%;background:${color}"></div></div>` : ""}
+        ${showBar ? `<div class="bar"><div style="width:${Math.min(100, Math.max(0, pct))}%;background:${barColor}"></div></div>` : ""}
       </div>`;
   }
 
