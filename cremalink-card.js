@@ -985,7 +985,7 @@ class CremalinkCard extends HTMLElement {
     const recipe = this._state("recipe");
     const id = recipe?.attributes?.selected_beverage;
     if (!recipe || !(id >= 230 && id <= 235) || this._saving) return;
-    const fields = { 1: "coffee", 2: "taste", 9: "milk", 13: "tea_temperature", 15: "water" };
+    const fields = { 1: "coffee", 2: "taste", 9: "milk", 15: "water" };
     const data = {
       device_id: this._found.deviceId,
       slot: id - 229,
@@ -1277,7 +1277,9 @@ class CremalinkCard extends HTMLElement {
     let body = "";
     if (!hide.includes("header")) body += this._header(f);
     if (!hide.includes("alarms")) body += this._alarms();
-    if (mode !== "status") {
+    // Drinks, profile, sliders and the brew button are only of use while the machine is on;
+    // in standby the header with its power button, warnings and maintenance are enough.
+    if (mode !== "status" && !f.standby) {
       // The profile decides the drink order and the favourites, so it comes first.
       if (!hide.includes("profile")) {
         const p = this._profile();
@@ -1345,18 +1347,24 @@ Object.assign(TEXT.en, {
   sc_hint: "Changed values: brew them once with Brew, or keep them in this recipe.",
   sc_save: "Save in recipe",
   sc_save_brew: "Save and brew",
+  rec_loading: "Reading the recipe …",
+  rec_coffee: "Coffee",
+  rec_milk: "Milk",
+  rec_water: "Hot water",
+  rec_coffee_ml: "Amount (ml)",
+  rec_taste: "Strength",
+  rec_milk_s: "Milk (s)",
+  rec_froth: "Froth",
+  rec_milk_first: "Milk first",
+  rec_water_ml: "Amount (ml)",
+  rec_need_ingredient: "Switch on at least one ingredient.",
+  rec_icons_more: "More pictures of the machine",
   rec_section: "Custom recipes",
-  rec_hint: "The machine has six places for your own drinks. Pick one to create or change it.",
+  rec_hint: "The machine has six places for your own drinks. Pick one to create or change it, like in the Coffee Link app: switch the ingredients on and set them.",
   rec_slot: "Place {n}",
   rec_empty: "empty",
   rec_name: "Name (up to 10 characters)",
   rec_icon: "Picture on the machine",
-  rec_template: "Start from",
-  rec_template_own: "the recipe in this place",
-  rec_amounts: "Amounts (empty = from the starting recipe)",
-  rec_water: "Water (ml)",
-  rec_coffee: "Coffee (ml)",
-  rec_milk: "Milk (s)",
   rec_save: "Only save",
   rec_save_brew: "Save and brew",
   rec_delete: "Delete",
@@ -1365,7 +1373,6 @@ Object.assign(TEXT.en, {
   rec_working: "Working …",
   rec_asleep: "The machine is asleep. Wake it up first.",
   rec_need_name: "Give the recipe a name.",
-  rec_need_template: "Choose what to start from.",
   ed_hide_custom: "Custom recipes",
   ed_name_admin: "Name",
   ed_device_id_admin: "Machine",
@@ -1389,18 +1396,24 @@ Object.assign(TEXT.de, {
   sc_hint: "Geänderte Werte: einmal mit Zubereiten ausgeben oder im Rezept behalten.",
   sc_save: "Im Rezept speichern",
   sc_save_brew: "Speichern und ausgeben",
+  rec_loading: "Lese das Rezept …",
+  rec_coffee: "Kaffee",
+  rec_milk: "Milch",
+  rec_water: "Heißwasser",
+  rec_coffee_ml: "Menge (ml)",
+  rec_taste: "Stärke",
+  rec_milk_s: "Milch (s)",
+  rec_froth: "Schaum",
+  rec_milk_first: "Milch zuerst",
+  rec_water_ml: "Menge (ml)",
+  rec_need_ingredient: "Schalte mindestens eine Zutat ein.",
+  rec_icons_more: "Weitere Bilder der Maschine",
   rec_section: "Eigene Rezepte",
-  rec_hint: "Die Maschine hat sechs Plätze für eigene Getränke. Wähle einen, um ihn anzulegen oder zu ändern.",
+  rec_hint: "Die Maschine hat sechs Plätze für eigene Getränke. Wähle einen, um ihn anzulegen oder zu ändern, wie in der Coffee-Link-App: Zutaten einschalten und einstellen.",
   rec_slot: "Platz {n}",
   rec_empty: "leer",
   rec_name: "Name (bis 10 Zeichen)",
   rec_icon: "Bild an der Maschine",
-  rec_template: "Ausgangspunkt",
-  rec_template_own: "das Rezept in diesem Platz",
-  rec_amounts: "Mengen (leer = wie im Ausgangsrezept)",
-  rec_water: "Wasser (ml)",
-  rec_coffee: "Kaffee (ml)",
-  rec_milk: "Milch (s)",
   rec_save: "Nur speichern",
   rec_save_brew: "Speichern und ausgeben",
   rec_delete: "Löschen",
@@ -1409,7 +1422,6 @@ Object.assign(TEXT.de, {
   rec_working: "Arbeite …",
   rec_asleep: "Die Maschine schläft. Bitte zuerst aufwecken.",
   rec_need_name: "Gib dem Rezept einen Namen.",
-  rec_need_template: "Wähle einen Ausgangspunkt.",
   ed_hide_custom: "Eigene Rezepte",
   ed_name_admin: "Name",
   ed_device_id_admin: "Maschine",
@@ -1429,6 +1441,10 @@ const DISPLAY_PICTURES = {
     "Cappuccino 4", "Cappuccino 5"],
 };
 const CUSTOM_BASE = 229; // custom recipe places 1-6 are drinks 230-235
+// Limits of a custom place, from the machine's own descriptor (same for all six places).
+// Switching an ingredient on starts at the minimum, like the app.
+const CUSTOM = { coffee: [20, 180], water: [50, 300], milk: [5, 108], taste: [0, 5], froth: [0, 2] };
+const APP_PICTURES = 20; // the app offers pictures 0-19; the machine shows 20-25 too
 
 function esc(text) {
   return String(text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -1454,6 +1470,7 @@ class CremalinkAdminCard extends CremalinkCard {
     this._rSlot = null; // place being edited (1-6)
     this._rForm = {};
     this._rBusy = false;
+    this._rLoading = false;
     this._rDeleteArmed = false;
     this._maintOpen = open.maint !== false;
     this._settingsOpen = open.settings !== false;
@@ -1485,10 +1502,15 @@ class CremalinkAdminCard extends CremalinkCard {
     });
     root.addEventListener("input", (e) => {
       const f = e.target?.dataset?.recField;
-      if (f) this._rForm[f] = e.target.value;
+      if (f && e.target.type !== "checkbox") this._rForm[f] = e.target.value;
     });
     root.addEventListener("change", (e) => {
       const f = e.target?.dataset?.recField;
+      if (f && e.target.type === "checkbox") {
+        this._rForm[f] = e.target.checked;
+        e.target.blur();
+        return this._refresh();
+      }
       if (f) this._rForm[f] = e.target.value;
       if (e.target?.dataset?.fav !== "add" || !e.target.value) return;
       if (this._draft.length < MAX_FAVORITES && !this._draft.includes(e.target.value)) this._draft.push(e.target.value);
@@ -1616,21 +1638,8 @@ class CremalinkAdminCard extends CremalinkCard {
   _recAction(act, data) {
     const known = this._known();
     if (!known || this._rBusy) return;
-    if (act === "open") {
-      const n = Number(data.slot);
-      const name = this._slotName(known, n);
-      const option = known.options.find((o) => known.ids[o] === CUSTOM_BASE + n);
-      this._rSlot = n;
-      this._rDeleteArmed = false;
-      this._rForm = {
-        name: name || "",
-        icon: String(option && known.icons[option] !== undefined ? known.icons[option] : 12),
-        template: name ? "" : "",
-        water: "",
-        coffee: "",
-        milk: "",
-      };
-    } else if (act === "close") {
+    if (act === "open") return this._recOpen(Number(data.slot));
+    if (act === "close") {
       this._rSlot = null;
       this._rDeleteArmed = false;
     } else if (act === "save" || act === "brew") {
@@ -1645,15 +1654,64 @@ class CremalinkAdminCard extends CremalinkCard {
     this._refresh();
   }
 
+  // Opens a place with what the machine holds now (read live by the integration).
+  async _recOpen(n) {
+    this._rSlot = n;
+    this._rDeleteArmed = false;
+    this._rLoading = true;
+    this._rForm = {};
+    this._refresh();
+    try {
+      const res = await this._hass.callWS({
+        type: "call_service",
+        domain: "cremalink_ha",
+        service: "get_recipe",
+        service_data: { device_id: this._found.deviceId, slot: n },
+        return_response: true,
+      });
+      const r = res?.response || {};
+      this._rForm = {
+        name: r.name || "",
+        icon: String(r.icon ?? 12),
+        coffeeOn: r.coffee > 0,
+        coffee: String(r.coffee > 0 ? r.coffee : CUSTOM.coffee[0]),
+        taste: String(r.taste ?? 3),
+        milkOn: r.milk > 0,
+        milk: String(r.milk > 0 ? r.milk : CUSTOM.milk[0]),
+        froth: String(r.froth ?? 1),
+        milkFirst: !!r.milk_first,
+        waterOn: r.water > 0,
+        water: String(r.water > 0 ? r.water : CUSTOM.water[0]),
+      };
+    } catch (err) {
+      this._rSlot = null;
+      this._error(err);
+    } finally {
+      this._rLoading = false;
+      this._refresh();
+    }
+  }
+
   async _recSave(known, brew) {
     const f = this._rForm;
-    const n = this._rSlot;
     if (!known.live) return this._error(new Error(this._t("rec_asleep")));
     if (!(f.name || "").trim()) return this._error(new Error(this._t("rec_need_name")));
-    const data = { device_id: this._found.deviceId, slot: n, name: f.name.trim(), icon: Number(f.icon), brew };
-    if (f.template) data.template = Number(f.template);
-    else if (!this._slotName(known, n)) return this._error(new Error(this._t("rec_need_template")));
-    for (const k of ["water", "coffee", "milk"]) if (String(f[k] ?? "").trim() !== "") data[k] = Number(f[k]);
+    if (!f.coffeeOn && !f.milkOn && !f.waterOn) return this._error(new Error(this._t("rec_need_ingredient")));
+    const data = {
+      device_id: this._found.deviceId,
+      slot: this._rSlot,
+      name: f.name.trim(),
+      icon: Number(f.icon),
+      brew,
+      coffee: f.coffeeOn ? Number(f.coffee) : 0,
+      milk: f.milkOn ? Number(f.milk) : 0,
+      water: f.waterOn ? Number(f.water) : 0,
+    };
+    if (f.coffeeOn) data.taste = Number(f.taste);
+    if (f.milkOn) {
+      data.froth = Number(f.froth);
+      data.milk_first = !!f.milkFirst;
+    }
     await this._recCall("save_recipe", data);
   }
 
@@ -1678,43 +1736,56 @@ class CremalinkAdminCard extends CremalinkCard {
   }
 
   _customSection(known) {
+    // Only while the machine is awake: it cannot confirm anything in standby.
+    if (!known.live) return "";
     const lang = (this._hass?.language || "en").split("-")[0];
     const names = DISPLAY_PICTURES[lang] || DISPLAY_PICTURES.en;
     const places = [1, 2, 3, 4, 5, 6]
       .map((n) => {
         const name = this._slotName(known, n);
         const on = this._rSlot === n;
-        return `<button class="slot ${on ? "sel" : ""}" data-rec="open" data-slot="${n}" aria-pressed="${on}" ${this._rBusy ? "disabled" : ""}>
+        return `<button class="slot ${on ? "sel" : ""}" data-rec="open" data-slot="${n}" aria-pressed="${on}" ${this._rBusy || this._rLoading ? "disabled" : ""}>
           <span class="snum">${n}</span><span class="sname">${name ? esc(name) : `<i>${this._t("rec_empty")}</i>`}</span></button>`;
       })
       .join("");
     let form = "";
-    if (this._rSlot) {
-      const n = this._rSlot;
+    if (this._rSlot && this._rLoading) {
+      form = `<p class="note">${this._t("rec_loading")}</p>`;
+    } else if (this._rSlot) {
       const f = this._rForm;
-      const filled = !!this._slotName(known, n);
-      const drinks = known.options.filter((o) => Number.isInteger(known.ids[o]) && known.ids[o] !== CUSTOM_BASE + n);
-      const tpl = `<select data-rec-field="template">
-        ${filled ? `<option value="" ${f.template === "" ? "selected" : ""}>${this._t("rec_template_own")}</option>` : `<option value="">…</option>`}
-        ${drinks.map((o) => `<option value="${known.ids[o]}" ${String(known.ids[o]) === String(f.template) ? "selected" : ""}>${esc(this._hass.formatEntityState(known.st, o))}</option>`).join("")}</select>`;
-      const icons = `<select data-rec-field="icon">${names
-        .map((label, i) => `<option value="${i}" ${String(i) === String(f.icon) ? "selected" : ""}>${i} · ${esc(label)}</option>`)
-        .join("")}</select>`;
-      const amount = (k) => `<label>${this._t("rec_" + k)}<input type="number" inputmode="decimal" min="0" data-rec-field="${k}" value="${esc(f[k] ?? "")}"></label>`;
+      const filled = !!this._slotName(known, this._rSlot);
+      const opt = (i, label) => `<option value="${i}" ${String(i) === String(f.icon) ? "selected" : ""}>${i} · ${esc(label)}</option>`;
+      const icons = `<select data-rec-field="icon">
+        ${names.slice(0, APP_PICTURES).map((l, i) => opt(i, l)).join("")}
+        <optgroup label="${this._t("rec_icons_more")}">${names.slice(APP_PICTURES).map((l, i) => opt(i + APP_PICTURES, l)).join("")}</optgroup></select>`;
+      const num = (field, label, [lo, hi]) =>
+        `<label>${this._t(label)}<input type="number" inputmode="numeric" min="${lo}" max="${hi}" data-rec-field="${field}" value="${esc(f[field] ?? "")}"></label>`;
+      const pick = (field, label, [lo, hi]) =>
+        `<label>${this._t(label)}<select data-rec-field="${field}">${Array.from({ length: hi - lo + 1 }, (_, k) => lo + k)
+          .map((v) => `<option value="${v}" ${String(v) === String(f[field]) ? "selected" : ""}>${v}</option>`)
+          .join("")}</select></label>`;
+      const ingredient = (key, title, body) => `<div class="ingr">
+        <label class="ingr-on"><input type="checkbox" data-rec-field="${key}On" ${f[key + "On"] ? "checked" : ""}> ${this._t(title)}</label>
+        ${f[key + "On"] ? `<div class="ingr-body">${body}</div>` : ""}</div>`;
       const busy = this._rBusy;
-      const off = busy || !known.live ? "disabled" : "";
+      const off = busy ? "disabled" : "";
       form = `<div class="recform">
         <label>${this._t("rec_name")}<input type="text" maxlength="10" data-rec-field="name" value="${esc(f.name ?? "")}"></label>
         <label>${this._t("rec_icon")}${icons}</label>
-        <label>${this._t("rec_template")}${tpl}</label>
-        <p class="note">${this._t("rec_amounts")}</p>
-        <div class="amounts">${amount("water")}${amount("coffee")}${amount("milk")}</div>
-        ${!known.live ? `<p class="note">${this._t("rec_asleep")}</p>` : ""}
+        ${ingredient("coffee", "rec_coffee", num("coffee", "rec_coffee_ml", CUSTOM.coffee) + pick("taste", "rec_taste", CUSTOM.taste))}
+        ${ingredient(
+          "milk",
+          "rec_milk",
+          num("milk", "rec_milk_s", CUSTOM.milk) +
+            pick("froth", "rec_froth", CUSTOM.froth) +
+            `<label class="ingr-on"><input type="checkbox" data-rec-field="milkFirst" ${f.milkFirst ? "checked" : ""}> ${this._t("rec_milk_first")}</label>`
+        )}
+        ${ingredient("water", "rec_water", num("water", "rec_water_ml", CUSTOM.water))}
         <div class="actions">
           <button class="primary" data-rec="save" ${off}>${busy ? this._t("rec_working") : this._t("rec_save")}</button>
           <button class="primary" data-rec="brew" ${off}>${this._t("rec_save_brew")}</button>
           ${filled ? `<button class="ghost danger" data-rec="delete" ${off}>${this._rDeleteArmed ? this._t("rec_delete_sure") : this._t("rec_delete")}</button>` : ""}
-          <button class="ghost" data-rec="close" ${busy ? "disabled" : ""}>${this._t("rec_close")}</button>
+          <button class="ghost" data-rec="close" ${off}>${this._t("rec_close")}</button>
         </div></div>`;
     }
     return this._fold("toggle-custom", this._customOpen, this._t("rec_section"), `<p class="hint">${this._t("rec_hint")}</p><div class="slots">${places}</div>${form}`);
@@ -1862,7 +1933,9 @@ class CremalinkAdminCard extends CremalinkCard {
         .recform label { display: grid; gap: 4px; font-size: 12px; color: var(--secondary-text-color); }
         .recform input, .recform select { padding: 10px; border-radius: 10px; border: 1px solid var(--divider-color);
           background: var(--secondary-background-color); color: var(--primary-text-color); font: inherit; min-width: 0; }
-        .amounts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .ingr { border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 10px; }
+        .ingr-on { display: flex !important; align-items: center; gap: 8px; color: var(--primary-text-color) !important; font-size: 14px !important; cursor: pointer; }
+        .ingr-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 8px; }
         .danger { color: var(--error-color); border-color: var(--error-color) !important; }
         .msg { color: var(--error-color); font-size: 12px; min-height: 1em; margin-top: 8px; }
       </style>

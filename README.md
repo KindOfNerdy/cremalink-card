@@ -46,7 +46,7 @@ mode: full   # full | control | status
 
 Set `device_id` only if you have more than one machine.
 
-**When the machine sleeps** the card keeps showing the drinks and profiles it saw last, dimmed and locked (the machine's selections are not available in standby), together with the status, warnings, maintenance and settings. The power button switches the machine on; the sliders and the brew button return when it is ready. The last known lists are kept in your browser.
+**When the machine sleeps** the card shows only what is useful then: the header with status and power button, warnings, maintenance and settings. Drinks, profile, sliders and the brew button come back once the machine is on. In the Machine Manager the custom recipes are hidden in standby as well (the machine cannot confirm a change then).
 
 The card adapts to the width it gets on the dashboard: on a wide card the drinks sit next to the sliders and the brew button, on a narrow one everything stacks and shrinks.
 
@@ -84,7 +84,7 @@ type: custom:cremalink-admin-card
 It holds four sections. Each one can be folded; they are open at first and the card remembers what you folded (per browser, separately from the Coffee Machine card):
 
 - **Favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. This needs the integration version with the `cremalink_ha.set_favorites` action and a machine that is awake.
-- **Custom recipes**: the machine's six places for your own drinks. Pick a place to create or change a recipe (name, the picture shown on the machine, a drink to start from, optional amounts) and choose *Only save*, *Save and brew* or *Delete* (asks twice). This needs the integration version with the `cremalink_ha.save_recipe` and `cremalink_ha.delete_recipe` actions.
+- **Custom recipes**: the machine's six places for your own drinks. Pick a place to create or change a recipe like in the Coffee Link app: name, the picture shown on the machine (the app's 20 pictures, plus the machine's further ones), and the ingredients coffee (with strength), milk (with froth and milk first) and hot water within the place's limits. The form opens with what the machine holds now. Then *Only save*, *Save and brew* or *Delete* (asks twice). Hidden while the machine is in standby. Needs the integration version with the `cremalink_ha.save_recipe`, `get_recipe` and `delete_recipe` actions.
 - **Machine settings:** beep, energy saving, coffee temperature, auto-off, water hardness, plus when the counters were last updated and the Wi-Fi module firmware.
 - **Maintenance:** the same bars and counters as in the Coffee Machine card.
 
