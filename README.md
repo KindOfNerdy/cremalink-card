@@ -37,7 +37,7 @@ Two Lovelace cards for coffee machines set up with the [cremalink-ha](https://gi
 
 ## Usage
 
-Add "Cremalink Coffee Card" from the card picker and set it up in the visual editor, or use YAML:
+Add "Cremalink Coffee Machine" from the card picker and set it up in the visual editor, or use YAML:
 
 ```yaml
 type: custom:cremalink-card
