@@ -806,7 +806,7 @@ class CremalinkCard extends HTMLElement {
   // so nothing is claimed (null).
   _runningKind(f) {
     // hot water, tea and steam are hot whoever started them (the machine says so in its status)
-    if (HOT_STATUSES.includes(f.status)) return "hot";
+    if (HOT_STATUSES.includes(f.status) || ["hot_water", "steam"].includes(this._state("cremalink_drink_phase")?.state)) return "hot";
     if (f.running) this._sawRunning = true;
     else if (this._sawRunning) {
       this._started = null;
@@ -824,7 +824,10 @@ class CremalinkCard extends HTMLElement {
     const report = this._state("cremalink_last_report");
     const name = this._config.name || this._found.deviceName || "Coffee machine";
     // Coffee and other drinks keep the status "ready" while they run: say what happens.
-    const dispensing = f.running && IDLE.includes(f.status);
+    // The integration's "drink phase" sensor says which step it is (grinding, dispensing ...).
+    const phase = this._state("cremalink_drink_phase");
+    const phaseText = phase && !EMPTY.includes(phase.state) && IDLE.includes(f.status) ? hass.formatEntityState(phase) : "";
+    const dispensing = Boolean(phaseText) || (f.running && IDLE.includes(f.status));
     const color = statusColor(dispensing ? "dispensing" : f.status);
     const pic = this._config.images?.device;
     const visual = pic
@@ -848,7 +851,7 @@ class CremalinkCard extends HTMLElement {
         <div class="visual">${visual}</div>
         <div class="text">
           <div class="name">${name}</div>
-          <div class="status" style="color:${color}">${dispensing ? this._t("dispensing") : status ? hass.formatEntityState(status) : ""}</div>
+          <div class="status" style="color:${color}">${phaseText || (dispensing ? this._t("dispensing") : status ? hass.formatEntityState(status) : "")}</div>
           ${report ? `<div class="sub">${this._t("last_report", { when: this._since(report.state) })}</div>` : ""}
         </div>
         ${powerBtn}
