@@ -47,7 +47,7 @@ const TEXT = {
     aborted: "Aborted",
     descales: "Descalings",
     water_total: "Water used in total",
-    settings: "Settings",
+    settings: "Machine settings",
     info: "Data",
     stats_updated: "Counters as of",
     firmware: "Wi-Fi module firmware",
@@ -113,7 +113,7 @@ const TEXT = {
     aborted: "Abgebrochen",
     descales: "Entkalkungen",
     water_total: "Wasser gesamt",
-    settings: "Einstellungen",
+    settings: "Maschineneinstellungen",
     info: "Daten",
     stats_updated: "Zählerstand von",
     firmware: "Firmware WLAN-Modul",
@@ -1020,36 +1020,9 @@ class CremalinkCard extends HTMLElement {
     return this._fold("toggle-settings", this._settingsOpen, this._t("settings"), `${rows.join("")}${info ? `<div class="kvs">${info}</div>` : ""}`);
   }
 
-  _render() {
-    const mode = this._config.mode;
-    const hide = this._hide;
-    const f = this._flags();
-    let body = "";
-    if (!hide.includes("header")) body += this._header(f);
-    if (!hide.includes("alarms")) body += this._alarms();
-    if (mode !== "status") {
-      // The profile decides the drink order and the favourites, so it comes first.
-      if (!hide.includes("profile")) {
-        const p = this._profile();
-        if (p) body += `<div class="section">${p}</div>`;
-      }
-      const left = hide.includes("recipes") ? "" : this._recipes(f);
-      let right = hide.includes("sliders") ? "" : this._sliders(f);
-      right += this._brew(f);
-      body += `<div class="main"><div class="col">${left}</div><div class="col">${right}</div></div>`;
-    }
-    if (mode !== "control") {
-      if (!hide.includes("maintenance")) body += this._maintenance();
-      if (!hide.includes("settings")) body += this._settings();
-    }
-    body += `<div class="msg">${this._message}</div>`;
-    // Keep the card's height and the drinks list's scroll position while the content is
-    // rebuilt; otherwise Safari on iOS jumps the page to the card on every tap.
-    const height = this.offsetHeight || 0;
-    const keepTop = this.shadowRoot.querySelector(".drinks")?.scrollTop || 0;
-    if (height && this.style) this.style.minHeight = `${height}px`;
-    this.shadowRoot.innerHTML = `
-      <style>
+  // The stylesheet of the main card; the admin card builds on it.
+  _css() {
+    return `
         :host { display: block; container-type: inline-size; }
         ha-card { padding: 12px 14px; }
         .head { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; column-gap: 14px; align-items: center;
@@ -1186,7 +1159,38 @@ class CremalinkCard extends HTMLElement {
         .kv { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 2px 0; }
         .kv span:first-child { color: var(--secondary-text-color); }
         .msg { min-height: 1.2em; margin-top: 8px; font-size: 13px; color: var(--error-color); }
-      </style>
+      `;
+  }
+
+  _render() {
+    const mode = this._config.mode;
+    const hide = this._hide;
+    const f = this._flags();
+    let body = "";
+    if (!hide.includes("header")) body += this._header(f);
+    if (!hide.includes("alarms")) body += this._alarms();
+    if (mode !== "status") {
+      // The profile decides the drink order and the favourites, so it comes first.
+      if (!hide.includes("profile")) {
+        const p = this._profile();
+        if (p) body += `<div class="section">${p}</div>`;
+      }
+      const left = hide.includes("recipes") ? "" : this._recipes(f);
+      let right = hide.includes("sliders") ? "" : this._sliders(f);
+      right += this._brew(f);
+      body += `<div class="main"><div class="col">${left}</div><div class="col">${right}</div></div>`;
+    }
+    if (mode !== "control") {
+      if (!hide.includes("maintenance")) body += this._maintenance();
+    }
+    body += `<div class="msg">${this._message}</div>`;
+    // Keep the card's height and the drinks list's scroll position while the content is
+    // rebuilt; otherwise Safari on iOS jumps the page to the card on every tap.
+    const height = this.offsetHeight || 0;
+    const keepTop = this.shadowRoot.querySelector(".drinks")?.scrollTop || 0;
+    if (height && this.style) this.style.minHeight = `${height}px`;
+    this.shadowRoot.innerHTML = `
+      <style>${this._css()}</style>
       <ha-card>${body}</ha-card>`;
     const list = this.shadowRoot.querySelector(".drinks");
     if (list && keepTop) list.scrollTop = keepTop;
@@ -1205,8 +1209,8 @@ customElements.define("cremalink-card", CremalinkCard);
 window.customCards = window.customCards || [];
 window.customCards.push({
   type: "cremalink-card",
-  name: "Cremalink Coffee Card",
-  description: "Status, drinks, sliders and brew button for coffee machines set up with cremalink-ha.",
+  name: "Cremalink Coffee Machine",
+  description: "Everyday use: status, warnings, drinks, sliders and brew button for coffee machines set up with cremalink-ha.",
 });
 
 // ---- admin card -----------------------------------------------------------
@@ -1215,7 +1219,8 @@ window.customCards.push({
 // favourites editor (drag and drop, plus buttons for the keyboard and for taps).
 
 Object.assign(TEXT.en, {
-  admin_title: "Favorites",
+  admin_title: "Manage",
+  fav_section: "Favorites",
   fav_profile: "Profile {name}",
   fav_hint: "Drag the grip to change the order. The first drink is the first favorite on the machine.",
   fav_empty: "No favorites yet. Add a drink below.",
@@ -1233,7 +1238,8 @@ Object.assign(TEXT.en, {
   ed_device_id_admin: "Machine",
 });
 Object.assign(TEXT.de, {
-  admin_title: "Favoriten",
+  admin_title: "Verwalten",
+  fav_section: "Favoriten",
   fav_profile: "Profil {name}",
   fav_hint: "Zieh am Griff, um die Reihenfolge zu ändern. Das erste Getränk ist der erste Favorit an der Maschine.",
   fav_empty: "Noch keine Favoriten. Füge unten ein Getränk hinzu.",
@@ -1311,6 +1317,11 @@ class CremalinkAdminCard extends CremalinkCard {
     this._found = null;
     this._sig = null;
     if (this._hass) this._update();
+  }
+
+  // the admin card shows its sections open, without a toggle
+  _fold(act, open, title, inner) {
+    return `<div class="fold"><div class="fold-head">${title}</div>${inner}</div>`;
   }
 
   // do not redraw under a finger that is dragging
@@ -1442,19 +1453,19 @@ class CremalinkAdminCard extends CremalinkCard {
           ${free.map((o) => `<option value="${esc(o)}">${esc(this._hass.formatEntityState(known.st, o))}</option>`).join("")}</select>`;
       const canSave = dirty && known.live && !this._saving;
       const notes = [full ? this._t("fav_max") : "", !known.live ? this._t("fav_asleep") : ""].filter(Boolean).join(" ");
-      inner = `<p class="hint">${this._t("fav_hint")}</p>
+      inner = `<div class="fold"><div class="fold-head">${this._t("fav_section")}</div><p class="hint">${this._t("fav_hint")}</p>
         ${draft.length ? `<ol class="favs">${rows}</ol>` : `<p class="note">${this._t("fav_empty")}</p>`}
         <div class="addrow">${add}</div>
         ${notes ? `<p class="note">${notes}</p>` : ""}
         <div class="actions">
           <button class="primary" data-fav="save" ${canSave ? "" : "disabled"}>${this._saving ? this._t("fav_saving") : this._t("fav_save")}</button>
           <button class="ghost" data-fav="reset" ${dirty && !this._saving ? "" : "disabled"}>${this._t("fav_reset")}</button>
-        </div>`;
+        </div></div>`;
     }
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display: block; container-type: inline-size; }
-        ha-card { padding: 12px 14px; }
+        ${this._css()}
+        .fold-head { font-weight: 600; min-height: 40px; display: flex; align-items: center; }
         .title { font-size: 18px; font-weight: 600; line-height: 1.2; }
         .sub { font-size: 12px; color: var(--secondary-text-color); margin-top: 2px; }
         .hint, .note { font-size: 12px; color: var(--secondary-text-color); margin: 10px 0; }
@@ -1471,7 +1482,7 @@ class CremalinkAdminCard extends CremalinkCard {
         .ib { border: 0; background: transparent; color: var(--primary-text-color); cursor: pointer; width: 32px; height: 32px;
           border-radius: 8px; display: grid; place-items: center; padding: 0; }
         .ib:disabled { opacity: .3; cursor: default; }
-        select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--divider-color);
+        .addrow select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--divider-color);
           background: var(--secondary-background-color); color: var(--primary-text-color); font: inherit; }
         .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
         .actions button { font: inherit; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--divider-color); cursor: pointer; }
@@ -1484,6 +1495,7 @@ class CremalinkAdminCard extends CremalinkCard {
         <div class="title">${esc(name)} · ${this._t("admin_title")}</div>
         <div class="sub">${profileName ? this._t("fav_profile", { name: esc(profileName) }) : ""}</div>
         ${inner}
+        ${known ? this._settings() + this._maintenance() : ""}
         <div class="msg">${esc(this._message)}</div>
       </ha-card>`;
   }
@@ -1492,6 +1504,6 @@ class CremalinkAdminCard extends CremalinkCard {
 customElements.define("cremalink-admin-card", CremalinkAdminCard);
 window.customCards.push({
   type: "cremalink-admin-card",
-  name: "Cremalink Admin Card",
-  description: "Favourite drinks of a coffee machine set up with cremalink-ha: reorder by drag and drop and save on the machine.",
+  name: "Cremalink Machine Manager",
+  description: "Rarely needed: favorite drinks (drag and drop), machine settings and maintenance of a coffee machine set up with cremalink-ha.",
 });

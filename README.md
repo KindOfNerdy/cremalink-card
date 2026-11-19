@@ -1,18 +1,18 @@
-# Cremalink Coffee Card
+# Cremalink Cards
 
-A Lovelace card for coffee machines set up with the [cremalink-ha](https://github.com/lodzen/cremalink-ha) integration: status, drink tiles, sliders with the machine's limits and a brew button in one card. Colors, fonts and texts follow your Home Assistant theme and language (English and German included). Unofficial; not affiliated with or endorsed by De'Longhi, product names are trademarks of their respective owners.
+Two Lovelace cards for coffee machines set up with the [cremalink-ha](https://github.com/lodzen/cremalink-ha) integration: **Cremalink Coffee Machine** for everyday use (status, drink tiles, sliders with the machine's limits and a brew button) and **Cremalink Machine Manager** for the rarely needed things (favorites, machine settings, maintenance). Colors, fonts and texts follow your Home Assistant theme and language (English and German included). Unofficial; not affiliated with or endorsed by De'Longhi, product names are trademarks of their respective owners.
 
 > [!NOTE]
 > Early version. Developed with an Eletta Explore (ECAM452) over the cloud; other machines that cremalink-ha supports should show up too, but are untested.
 
-## What it shows
+## Cremalink Coffee Machine: what it shows
 
 - **Header:** machine name, status, "reported x min ago", progress while brewing and a power button.
 - **Warnings:** only what needs attention (water tank, drip tray, beans, descaling, filter …).
 - **Drinks:** tabs like the machine and the app have them: **Favorites** (of the active profile), **Hot**, **Cold**, **To go** (with a hot / cold choice below the tabs, as on the machine) and **Custom** (the recipes you named yourself), each with its own icon. One tile per drink, in the order of the machine's drink menu. A custom recipe is drawn like the drink whose picture you chose for it on the machine. Tap a tile to select it.
 - **Sliders:** one row for the selected drink (amount, strength, milk, temperature …) with the limits the machine allows. For tea the temperature steps are shown as tea types (white, green, oolong, black). A changed value is marked with a dot and only applies to the next brew; the stored recipe stays untouched.
 - **Brew:** one big button. It is disabled while the machine is asleep, busy or still loading the recipe values, and says why. The coffee pot and the cold brew pot can only be set and started on the machine (like in the Coffee Link app): they stay selectable, but have no sliders and no brew button.
-- **Profile:** buttons for the profiles you set up (profiles that still have their factory name are left out). Folded below: **Maintenance** (grounds container, descaling and water filter as bars, plus beverages, descalings and water in total) and **Settings** (beep, energy saving, coffee temperature, auto-off, water hardness, data freshness).
+- **Profile:** buttons for the profiles you set up (profiles that still have their factory name are left out). Folded below: **Maintenance** (grounds container, descaling and water filter as bars, plus beverages, descalings and water in total). The machine settings live in the Machine Manager card.
 
 ## Requirements
 
@@ -55,7 +55,7 @@ The card adapts to the width it gets on the dashboard: on a wide card the drinks
 | Option | Default | Description |
 |---|---|---|
 | `mode` | `full` | `full`, `control` (drinks, sliders, brew) or `status` (header, warnings, maintenance) |
-| `hide` | – | Sections to hide: `header`, `recipes`, `sliders`, `profile`, `alarms`, `maintenance`, `settings` |
+| `hide` | – | Sections to hide: `header`, `recipes`, `sliders`, `profile`, `alarms`, `maintenance` |
 | `name` | device name | Title in the header |
 | `device_id` | first machine | Device of the machine |
 | `tab_labels` | `true` | Show the text under the tab icons; `false` shows the icons only |
@@ -71,13 +71,19 @@ Without pictures the tiles use icons. To use your own pictures, put them into yo
 
 The tabs use the drink ids and the favorites from the integration where it provides them (`option_beverages` and `favorite_beverages` attributes of the recipe select) and the drink's name otherwise.
 
-## Admin card
+## Cremalink Machine Manager
 
-A second card in the same file, for things you rarely change. For now it edits the **favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. It needs the integration version with the `cremalink_ha.set_favorites` action and a machine that is awake.
+The second card, for things you rarely change. Add "Cremalink Machine Manager" from the card picker, or use YAML:
 
 ```yaml
 type: custom:cremalink-admin-card
 ```
+
+It holds three sections, all open:
+
+- **Favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. This needs the integration version with the `cremalink_ha.set_favorites` action and a machine that is awake.
+- **Machine settings:** beep, energy saving, coffee temperature, auto-off, water hardness, plus when the counters were last updated and the Wi-Fi module firmware.
+- **Maintenance:** the same bars and counters as in the Coffee Machine card.
 
 Set `device_id` only if you have more than one machine.
 
