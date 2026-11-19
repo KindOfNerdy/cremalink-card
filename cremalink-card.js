@@ -1999,5 +1999,5 @@ customElements.define("cremalink-admin-card", CremalinkAdminCard);
 window.customCards.push({
   type: "cremalink-admin-card",
   name: "Cremalink Machine Manager",
-  description: "Rarely needed: favorite drinks (drag and drop), machine settings and maintenance of a coffee machine set up with cremalink-ha.",
+  description: "Rarely needed: favorite drinks (drag and drop), your own recipes, machine settings and maintenance of a coffee machine set up with cremalink-ha.",
 });
