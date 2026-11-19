@@ -657,6 +657,11 @@ class CremalinkCard extends HTMLElement {
     }
   }
 
+  // An error message, only while there is one (it takes no room otherwise).
+  _msgHtml() {
+    return this._message ? `<div class="msg" role="alert">${esc(this._message)}</div>` : "";
+  }
+
   _error(err) {
     this._message = err?.message || String(err);
     clearTimeout(this._timers.message);
@@ -998,7 +1003,6 @@ class CremalinkCard extends HTMLElement {
     const custom = id >= 230 && id <= 235;
     const off = f.running || !f.canBrew || this._saving ? "disabled" : "";
     return `<div class="savebar">
-      <div class="hint">${this._t(custom ? "sc_hint" : "sc_hint_profile")}</div>
       <div class="actions">
         <button class="btn" data-act="save-changes" data-brew="0" ${off}>${this._t(custom ? "sc_save" : "sc_save_profile")}</button>
         <button class="btn" data-act="save-changes" data-brew="1" ${off}>${this._t("sc_save_brew")}</button>
@@ -1088,7 +1092,8 @@ class CremalinkCard extends HTMLElement {
     const st = this._state(tk);
     if (!st || EMPTY.includes(st.state)) return "";
     const n = Math.min(100, Math.max(0, Number(st.state)));
-    const color = n >= 90 ? "var(--warning-color)" : "var(--primary-color)";
+    // a level, not an action: neutral, and the warning colour once it needs attention
+    const color = n >= 90 ? "var(--warning-color)" : "var(--secondary-text-color)";
     return `<div class="meter"><div class="m-head"><span>${label}</span><span>${Math.round(n)} %</span></div>
       <div class="bar"><div style="width:${n}%;background:${color}"></div></div></div>`;
   }
@@ -1220,25 +1225,26 @@ class CremalinkCard extends HTMLElement {
           background: var(--card-background-color); color: var(--primary-text-color); }
         .drink:hover { background: var(--secondary-background-color); }
         .drink.sel { border-color: var(--primary-color); box-shadow: inset 0 0 0 1px var(--primary-color); background: var(--secondary-background-color); }
-        .drink ha-icon { --mdc-icon-size: 26px; color: var(--primary-color); }
+        .drink ha-icon { --mdc-icon-size: 26px; color: var(--secondary-text-color); }
+        .drink.sel ha-icon { color: var(--primary-color); }
         .d-pic { width: 44px; height: 44px; object-fit: contain; }
         .d-name { font-size: 12px; line-height: 1.2; overflow-wrap: anywhere; display: -webkit-box;
           -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .drink:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
         .drink[disabled] { opacity: .5; cursor: default; pointer-events: none; }
 
-        .sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 8px; }
+        .sliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
         .s-label { font-size: 13px; color: var(--secondary-text-color); margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .dot { display: inline-block; width: 8px; height: 8px; margin-left: 6px; border-radius: 50%; background: var(--primary-color); vertical-align: middle; }
+        .dot { display: inline-block; width: 8px; height: 8px; margin-left: 6px; border-radius: 50%; background: var(--accent-color, var(--primary-color)); vertical-align: middle; }
         .hint { font-size: 12px; color: var(--secondary-text-color); }
         .hint.center { text-align: center; margin-top: 6px; }
 
-        select, .btn, .stepper { box-sizing: border-box; min-height: 38px; border-radius: var(--ha-card-border-radius, 12px);
+        select, .btn, .stepper { box-sizing: border-box; min-height: 44px; border-radius: var(--ha-card-border-radius, 12px);
           border: 1px solid var(--divider-color); background: var(--card-background-color);
           color: var(--primary-text-color); font: inherit; }
         select { width: 100%; padding: 0 8px; min-width: 0; text-overflow: ellipsis; }
         .stepper { display: flex; align-items: center; justify-content: space-between; overflow: hidden; }
-        .stepper button { all: unset; box-sizing: border-box; width: 32px; align-self: stretch; display: flex;
+        .stepper button { all: unset; box-sizing: border-box; width: 44px; align-self: stretch; display: flex;
           align-items: center; justify-content: center; cursor: pointer; color: var(--primary-text-color); }
         .stepper button:hover { background: var(--secondary-background-color); }
         .stepper .val { display: flex; align-items: baseline; justify-content: center; gap: 2px; min-width: 0;
@@ -1252,13 +1258,14 @@ class CremalinkCard extends HTMLElement {
         .stepper ha-icon { --mdc-icon-size: 18px; }
 
         .btn { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 12px; cursor: pointer; }
-        .btn.icon-only { width: 38px; padding: 0; }
+        .btn.icon-only { width: 44px; padding: 0; }
         .btn:hover { background: var(--secondary-background-color); }
         .btn ha-icon { --mdc-icon-size: 20px; }
         .btn.primary { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color); }
         .btn.primary:hover { filter: brightness(1.08); }
         .btn.stop { background: var(--error-color, #db4437); border-color: var(--error-color, #db4437); color: #fff; }
         .btn.stop:hover { filter: brightness(1.08); }
+        .btn.danger { color: var(--error-color); border-color: var(--error-color); }
         .btn.big { width: 100%; min-height: 48px; font-size: 16px; font-weight: 600; }
         .brew { margin-top: 14px; }
         button[disabled], select[disabled] { opacity: .4; cursor: default; pointer-events: none; }
@@ -1311,12 +1318,14 @@ class CremalinkCard extends HTMLElement {
       const left = hide.includes("recipes") ? "" : this._recipes(f);
       let right = hide.includes("sliders") ? "" : this._sliders(f);
       right += this._brew(f);
+      right += this._msgHtml();
       body += `<div class="main"><div class="col">${left}</div><div class="col">${right}</div></div>`;
     }
     if (mode !== "control") {
       if (!hide.includes("maintenance")) body += this._maintenance();
     }
-    body += `<div class="msg">${esc(this._message)}</div>`;
+    // without the brew column (status mode, standby) the message goes to the end
+    if (mode === "status" || f.standby) body += this._msgHtml();
     // Keep the card's height and the drinks list's scroll position while the content is
     // rebuilt; otherwise Safari on iOS jumps the page to the card on every tap.
     const height = this.offsetHeight || 0;
@@ -1355,7 +1364,7 @@ Object.assign(TEXT.en, {
   admin_title: "Manage",
   fav_section: "Favorites",
   fav_profile: "Profile {name}",
-  fav_hint: "Drag the grip to change the order. The first drink is the first favorite on the machine.",
+  fav_hint: "Drag to reorder. The first drink comes first on the machine.",
   fav_empty: "No favorites yet. Add a drink below.",
   fav_add: "Add a drink …",
   fav_save: "Save on machine",
@@ -1367,10 +1376,8 @@ Object.assign(TEXT.en, {
   fav_up: "Move up",
   fav_down: "Move down",
   fav_remove: "Remove from favorites",
-  sc_hint: "Changed values: brew them once with Brew, or keep them in this recipe.",
   sc_save: "Save in recipe",
   sc_save_brew: "Save and brew",
-  sc_hint_profile: "Changed values: brew them once with Brew, or keep them for this drink in your profile.",
   sc_save_profile: "Save in profile",
   rec_loading: "Reading the recipe …",
   rec_coffee: "Coffee",
@@ -1385,7 +1392,7 @@ Object.assign(TEXT.en, {
   rec_need_ingredient: "Switch on at least one ingredient.",
   rec_icons_more: "More pictures of the machine",
   rec_section: "Custom recipes",
-  rec_hint: "The machine has six places for your own drinks. Pick one to create or change it, like in the Coffee Link app: switch the ingredients on and set them.",
+  rec_hint: "Six places for your own drinks. Pick one to create or change it.",
   rec_slot: "Place {n}",
   rec_empty: "empty",
   rec_name: "Name (up to 10 characters)",
@@ -1406,7 +1413,7 @@ Object.assign(TEXT.de, {
   admin_title: "Verwalten",
   fav_section: "Favoriten",
   fav_profile: "Profil {name}",
-  fav_hint: "Zieh am Griff, um die Reihenfolge zu ändern. Das erste Getränk ist der erste Favorit an der Maschine.",
+  fav_hint: "Zum Sortieren ziehen. Das erste Getränk steht an der Maschine vorn.",
   fav_empty: "Noch keine Favoriten. Füge unten ein Getränk hinzu.",
   fav_add: "Getränk hinzufügen …",
   fav_save: "Auf der Maschine speichern",
@@ -1418,10 +1425,8 @@ Object.assign(TEXT.de, {
   fav_up: "Nach oben",
   fav_down: "Nach unten",
   fav_remove: "Aus den Favoriten entfernen",
-  sc_hint: "Geänderte Werte: einmal mit Zubereiten ausgeben oder im Rezept behalten.",
   sc_save: "Im Rezept speichern",
-  sc_save_brew: "Speichern und ausgeben",
-  sc_hint_profile: "Geänderte Werte: einmal mit Zubereiten ausgeben oder für dieses Getränk im Profil behalten.",
+  sc_save_brew: "Speichern und zubereiten",
   sc_save_profile: "Im Profil speichern",
   rec_loading: "Lese das Rezept …",
   rec_coffee: "Kaffee",
@@ -1436,13 +1441,13 @@ Object.assign(TEXT.de, {
   rec_need_ingredient: "Schalte mindestens eine Zutat ein.",
   rec_icons_more: "Weitere Bilder der Maschine",
   rec_section: "Eigene Rezepte",
-  rec_hint: "Die Maschine hat sechs Plätze für eigene Getränke. Wähle einen, um ihn anzulegen oder zu ändern, wie in der Coffee-Link-App: Zutaten einschalten und einstellen.",
+  rec_hint: "Sechs Plätze für eigene Getränke. Wähle einen, um ihn anzulegen oder zu ändern.",
   rec_slot: "Platz {n}",
   rec_empty: "leer",
   rec_name: "Name (bis 10 Zeichen)",
   rec_icon: "Bild an der Maschine",
   rec_save: "Nur speichern",
-  rec_save_brew: "Speichern und ausgeben",
+  rec_save_brew: "Speichern und zubereiten",
   rec_delete: "Löschen",
   rec_delete_sure: "Wirklich löschen?",
   rec_close: "Schließen",
@@ -1460,12 +1465,12 @@ const ADMIN_SECTIONS = ["favorites", "custom", "settings", "maintenance"];
 const DISPLAY_PICTURES = {
   en: ["Cappuccino", "Espresso", "Latte Macchiato", "2x Espresso", "Caffè Latte", "Doppio+", "Hot milk", "Americano",
     "Cappuccino Doppio+", "Coffee", "Espresso Macchiato", "Flat White", "Hot water", "Cold milk", "Long coffee", "Steam",
-    "Chocolate", "Cappuccino Reverse", "Espresso (small)", "Tea", "Cold coffee", "To-go cappuccino", "Cappuccino 2", "Cappuccino 3",
-    "Cappuccino 4", "Cappuccino 5"],
+    "Chocolate", "Cappuccino Reverse", "Espresso (small)", "Tea", "Cold coffee", "To-go cappuccino", "Cappuccino (variant 2)",
+    "Cappuccino (variant 3)", "Cappuccino (variant 4)", "Cappuccino (variant 5)"],
   de: ["Cappuccino", "Espresso", "Latte Macchiato", "2x Espresso", "Caffè Latte", "Doppio+", "Heiße Milch", "Americano",
     "Cappuccino Doppio+", "Kaffee", "Espresso Macchiato", "Flat White", "Heißwasser", "Kalte Milch", "Long Coffee", "Dampf",
-    "Schokolade", "Cappuccino Reverse", "Espresso (klein)", "Tee", "Kalter Kaffee", "To-Go-Cappuccino", "Cappuccino 2", "Cappuccino 3",
-    "Cappuccino 4", "Cappuccino 5"],
+    "Schokolade", "Cappuccino Reverse", "Espresso (klein)", "Tee", "Kalter Kaffee", "To-Go-Cappuccino", "Cappuccino (Variante 2)",
+    "Cappuccino (Variante 3)", "Cappuccino (Variante 4)", "Cappuccino (Variante 5)"],
 };
 const CUSTOM_BASE = 229; // custom recipe places 1-6 are drinks 230-235
 // Limits of a custom place, from the machine's own descriptor (same for all six places).
@@ -1599,6 +1604,17 @@ class CremalinkAdminCard extends CremalinkCard {
     return wanted.filter((x) => !this._hide.includes(x));
   }
 
+  // switches and selects of the settings: their errors are not the recipes' or favourites'
+  _call(...args) {
+    this._msgAt = null;
+    return super._call(...args);
+  }
+
+  _select(...args) {
+    this._msgAt = null;
+    return super._select(...args);
+  }
+
   // do not redraw under a finger that is dragging
   _update() {
     if (this._drag) return;
@@ -1639,6 +1655,7 @@ class CremalinkAdminCard extends CremalinkCard {
   async _save() {
     const known = this._known();
     if (!known || this._saving) return;
+    this._msgAt = "fav";
     const ids = this._draft.map((o) => known.ids[o]).filter((id) => Number.isInteger(id));
     this._saving = true;
     this._refresh();
@@ -1683,6 +1700,7 @@ class CremalinkAdminCard extends CremalinkCard {
 
   // Opens a place with what the machine holds now (read live by the integration).
   async _recOpen(n) {
+    this._msgAt = "rec";
     this._rSlot = n;
     this._rDeleteArmed = false;
     this._rLoading = true;
@@ -1720,6 +1738,7 @@ class CremalinkAdminCard extends CremalinkCard {
   }
 
   async _recSave(known, brew) {
+    this._msgAt = "rec";
     const f = this._rForm;
     if (!known.live) return this._error(new Error(this._t("rec_asleep")));
     if (!(f.name || "").trim()) return this._error(new Error(this._t("rec_need_name")));
@@ -1743,6 +1762,7 @@ class CremalinkAdminCard extends CremalinkCard {
   }
 
   async _recDelete(known) {
+    this._msgAt = "rec";
     if (!known.live) return this._error(new Error(this._t("rec_asleep")));
     await this._recCall("delete_recipe", { device_id: this._found.deviceId, slot: this._rSlot });
   }
@@ -1781,7 +1801,7 @@ class CremalinkAdminCard extends CremalinkCard {
     } else if (this._rSlot) {
       const f = this._rForm;
       const filled = !!this._slotName(known, this._rSlot);
-      const opt = (i, label) => `<option value="${i}" ${String(i) === String(f.icon) ? "selected" : ""}>${i} · ${esc(label)}</option>`;
+      const opt = (i, label) => `<option value="${i}" ${String(i) === String(f.icon) ? "selected" : ""}>${esc(label)}</option>`;
       const icons = `<select data-rec-field="icon">
         ${names.slice(0, APP_PICTURES).map((l, i) => opt(i, l)).join("")}
         <optgroup label="${this._t("rec_icons_more")}">${names.slice(APP_PICTURES).map((l, i) => opt(i + APP_PICTURES, l)).join("")}</optgroup></select>`;
@@ -1808,11 +1828,12 @@ class CremalinkAdminCard extends CremalinkCard {
             `<label class="ingr-on"><input type="checkbox" data-rec-field="milkFirst" ${f.milkFirst ? "checked" : ""}> ${this._t("rec_milk_first")}</label>`
         )}
         ${ingredient("water", "rec_water", num("water", "rec_water_ml", CUSTOM.water))}
+        ${this._msgAt === "rec" ? this._msgHtml() : ""}
         <div class="actions">
-          <button class="primary" data-rec="save" ${off}>${busy ? this._t("rec_working") : this._t("rec_save")}</button>
-          <button class="primary" data-rec="brew" ${off}>${this._t("rec_save_brew")}</button>
-          ${filled ? `<button class="ghost danger" data-rec="delete" ${off}>${this._rDeleteArmed ? this._t("rec_delete_sure") : this._t("rec_delete")}</button>` : ""}
-          <button class="ghost" data-rec="close" ${off}>${this._t("rec_close")}</button>
+          <button class="btn primary" data-rec="save" ${off}>${busy ? this._t("rec_working") : this._t("rec_save")}</button>
+          <button class="btn" data-rec="brew" ${off}>${this._t("rec_save_brew")}</button>
+          ${filled ? `<button class="btn danger" data-rec="delete" ${off}>${this._rDeleteArmed ? this._t("rec_delete_sure") : this._t("rec_delete")}</button>` : ""}
+          <button class="btn" data-rec="close" ${off}>${this._t("rec_close")}</button>
         </div></div>`;
     }
     return this._fold("toggle-custom", this._customOpen, this._t("rec_section"), `<p class="hint">${this._t("rec_hint")}</p><div class="slots">${places}</div>${form}`);
@@ -1867,7 +1888,6 @@ class CremalinkAdminCard extends CremalinkCard {
   _render() {
     const known = this._known();
     const hide = this._hide;
-    const name = this._config.name || this._found?.deviceName || "";
     const profile = this._state("profile");
     const profileName = profile && profile.state !== "unavailable" ? profile.state : "";
     let favorites = "";
@@ -1911,17 +1931,22 @@ class CremalinkAdminCard extends CremalinkCard {
         ${draft.length ? `<ol class="favs">${rows}</ol>` : `<p class="note">${this._t("fav_empty")}</p>`}
         <div class="addrow">${add}</div>
         ${notes ? `<p class="note">${notes}</p>` : ""}
+        ${this._msgAt === "fav" ? this._msgHtml() : ""}
         <div class="actions">
-          <button class="primary" data-fav="save" ${canSave ? "" : "disabled"}>${this._saving ? this._t("fav_saving") : this._t("fav_save")}</button>
-          <button class="ghost" data-fav="reset" ${dirty && !this._saving ? "" : "disabled"}>${this._t("fav_reset")}</button>
+          <button class="btn primary" data-fav="save" ${canSave ? "" : "disabled"}>${this._saving ? this._t("fav_saving") : this._t("fav_save")}</button>
+          <button class="btn" data-fav="reset" ${dirty && !this._saving ? "" : "disabled"}>${this._t("fav_reset")}</button>
         </div>`;
       favorites = this._fold("toggle-fav", this._favOpen, this._t("fav_section"), favInner);
     }
+    // Was the message already shown next to the buttons that caused it?
+    const inline =
+      (this._msgAt === "fav" && !!known) ||
+      (this._msgAt === "rec" && !!known?.live && !!this._rSlot && !this._rLoading);
     const parts = { favorites, custom: known ? this._customSection(known) : "", settings: known ? this._settings() : "", maintenance: known ? this._maintenance() : "" };
     const body = known ? this._sectionOrder.map((k) => parts[k] || "").join("") : "";
     const titleHtml = hide.includes("title")
       ? ""
-      : `<div class="title">${esc(name)} · ${this._t("admin_title")}</div>
+      : `<div class="title">${esc(this._config.name || this._t("admin_title"))}</div>
         <div class="sub">${profileName ? this._t("fav_profile", { name: esc(profileName) }) : ""}</div>`;
     this.shadowRoot.innerHTML = `
       <style>
@@ -1934,21 +1959,17 @@ class CremalinkAdminCard extends CremalinkCard {
           background: var(--secondary-background-color); position: relative; }
         .fav.drag { z-index: 2; box-shadow: 0 4px 14px rgba(0,0,0,.35); background: var(--card-background-color); outline: 2px solid var(--primary-color); }
         .grip { touch-action: none; cursor: grab; border: 0; background: transparent; color: var(--secondary-text-color);
-          width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; padding: 0; }
+          width: 44px; height: 44px; border-radius: 8px; display: grid; place-items: center; padding: 0; }
         .grip:hover, .ib:hover:not(:disabled) { background: var(--divider-color); }
         .num { width: 18px; text-align: right; font-size: 12px; color: var(--secondary-text-color); }
         .pic { width: 32px; height: 32px; object-fit: contain; --mdc-icon-size: 28px; flex: none; }
         .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .ib { border: 0; background: transparent; color: var(--primary-text-color); cursor: pointer; width: 32px; height: 32px;
+        .ib { border: 0; background: transparent; color: var(--primary-text-color); cursor: pointer; width: 44px; height: 44px;
           border-radius: 8px; display: grid; place-items: center; padding: 0; }
         .ib:disabled { opacity: .3; cursor: default; }
         .addrow select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--divider-color);
           background: var(--secondary-background-color); color: var(--primary-text-color); font: inherit; }
         .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
-        .actions button { font: inherit; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--divider-color); cursor: pointer; }
-        .primary { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: transparent !important; }
-        .ghost { background: transparent; color: var(--primary-text-color); }
-        .actions button:disabled { opacity: .45; cursor: default; }
         .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin: 8px 0; }
         .slot { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 10px; border: 1px solid var(--divider-color);
           background: var(--secondary-background-color); color: var(--primary-text-color); font: inherit; cursor: pointer; text-align: left; }
@@ -1963,14 +1984,13 @@ class CremalinkAdminCard extends CremalinkCard {
         .ingr { border: 1px solid var(--divider-color); border-radius: 10px; padding: 8px 10px; }
         .ingr-on { display: flex !important; align-items: center; gap: 8px; color: var(--primary-text-color) !important; font-size: 14px !important; cursor: pointer; }
         .ingr-body { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; margin-top: 8px; }
-        .danger { color: var(--error-color); border-color: var(--error-color) !important; }
         .msg { color: var(--error-color); font-size: 12px; min-height: 1em; margin-top: 8px; }
       </style>
       <ha-card>
         ${titleHtml}
         ${inner}
         ${body}
-        <div class="msg">${esc(this._message)}</div>
+        ${inline ? "" : this._msgHtml()}
       </ha-card>`;
   }
 }
