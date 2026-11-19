@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.4.0";
+const CARD_VERSION = "0.5.0";
 
 const TEXT = {
   en: {
@@ -154,6 +154,10 @@ function uiText(key) {
 
 // Coffee pot and cold brew pot: the app only offers them on the machine (cups are set there).
 const POT_IDS = [23, 122];
+// Cold and cold to-go drinks, sorted like the app (machines with cold brew).
+function isColdSave(id) {
+  return (id >= 50 && id < 58) || id === 27 || (id >= 120 && id < 125) || (id >= 100 && id < 108) || (id >= 140 && id < 143);
+}
 
 const EMPTY = ["unknown", "unavailable", "none", ""];
 const STANDBY = ["in_standby", "going_to_sleep", "sleeping", "deep_sleep"];
@@ -967,43 +971,62 @@ class CremalinkCard extends HTMLElement {
 
   // Changed amounts of one of your own recipes can stay in the recipe (the machine stores
   // them), with or without pouring the drink.
+  // The changed sliders that can be kept, by action field. Like the app: for cold and
+  // cold to-go drinks the machine keeps the coffee, milk and water amounts fixed.
+  _savableChanges(f, id) {
+    const fields = { 1: "coffee", 2: "taste", 9: "milk", 15: "water", 13: "tea_temperature" };
+    const fixed = isColdSave(id) ? [1, 9, 15] : [];
+    const custom = id >= 230 && id <= 235;
+    const out = {};
+    for (const st of f.params) {
+      const pid = st.attributes.param_id;
+      if (!st.attributes.overridden || !fields[pid] || fixed.includes(pid)) continue;
+      if (custom && pid === 13) continue; // a custom place has no tea temperature
+      const pending = this._pending[st.entity_id];
+      out[fields[pid]] = pending !== undefined ? pending : Number(st.state);
+    }
+    return out;
+  }
+
+  // Changed values can stay in the recipe (custom recipe) or in the profile (standard
+  // drink), with or without pouring the drink - like "save" in the Coffee Link app.
   _saveBar(f) {
     const recipe = this._state("recipe");
-    const id = recipe?.attributes?.selected_beverage;
-    if (!recipe || recipe.state === "unavailable" || !(id >= 230 && id <= 235)) return "";
-    if (!f.params.some((st) => st.attributes.overridden)) return "";
+    const id = Number(recipe?.attributes?.selected_beverage);
+    if (!recipe || recipe.state === "unavailable" || !Number.isInteger(id) || f.pot) return "";
+    if (!Object.keys(this._savableChanges(f, id)).length) return "";
+    const custom = id >= 230 && id <= 235;
     const off = f.running || !f.canBrew || this._saving ? "disabled" : "";
     return `<div class="savebar">
-      <div class="hint">${this._t("sc_hint")}</div>
+      <div class="hint">${this._t(custom ? "sc_hint" : "sc_hint_profile")}</div>
       <div class="actions">
-        <button class="btn" data-act="save-changes" data-brew="0" ${off}>${this._t("sc_save")}</button>
+        <button class="btn" data-act="save-changes" data-brew="0" ${off}>${this._t(custom ? "sc_save" : "sc_save_profile")}</button>
         <button class="btn" data-act="save-changes" data-brew="1" ${off}>${this._t("sc_save_brew")}</button>
       </div></div>`;
   }
 
   async _saveChanges(brew) {
     const recipe = this._state("recipe");
-    const id = recipe?.attributes?.selected_beverage;
-    if (!recipe || !(id >= 230 && id <= 235) || this._saving) return;
-    const fields = { 1: "coffee", 2: "taste", 9: "milk", 15: "water" };
-    const data = {
-      device_id: this._found.deviceId,
-      slot: id - 229,
-      name: recipe.state,
-      icon: Number(recipe.attributes.option_icons?.[recipe.state] ?? 0),
-      brew,
-    };
-    const sliders = PARAMS.map((tk) => this._state(tk)).filter((st) => st && !EMPTY.includes(st.state));
-    for (const st of sliders) {
-      const field = fields[st.attributes.param_id];
-      if (!field || !st.attributes.overridden) continue;
-      const pending = this._pending[st.entity_id];
-      data[field] = pending !== undefined ? pending : Number(st.state);
+    const id = Number(recipe?.attributes?.selected_beverage);
+    if (!recipe || !Number.isInteger(id) || this._saving) return;
+    const changes = this._savableChanges(this._flags(), id);
+    let service = "save_drink";
+    let data = { device_id: this._found.deviceId, beverage: id, brew, ...changes };
+    if (id >= 230 && id <= 235) {
+      service = "save_recipe";
+      data = {
+        device_id: this._found.deviceId,
+        slot: id - 229,
+        name: recipe.state,
+        icon: Number(recipe.attributes.option_icons?.[recipe.state] ?? 0),
+        brew,
+        ...changes,
+      };
     }
     this._saving = true;
     this._refresh();
     try {
-      await this._hass.callService("cremalink_ha", "save_recipe", data);
+      await this._hass.callService("cremalink_ha", service, data);
     } catch (err) {
       this._error(err);
     } finally {
@@ -1347,6 +1370,8 @@ Object.assign(TEXT.en, {
   sc_hint: "Changed values: brew them once with Brew, or keep them in this recipe.",
   sc_save: "Save in recipe",
   sc_save_brew: "Save and brew",
+  sc_hint_profile: "Changed values: brew them once with Brew, or keep them for this drink in your profile.",
+  sc_save_profile: "Save in profile",
   rec_loading: "Reading the recipe …",
   rec_coffee: "Coffee",
   rec_milk: "Milk",
@@ -1396,6 +1421,8 @@ Object.assign(TEXT.de, {
   sc_hint: "Geänderte Werte: einmal mit Zubereiten ausgeben oder im Rezept behalten.",
   sc_save: "Im Rezept speichern",
   sc_save_brew: "Speichern und ausgeben",
+  sc_hint_profile: "Geänderte Werte: einmal mit Zubereiten ausgeben oder für dieses Getränk im Profil behalten.",
+  sc_save_profile: "Im Profil speichern",
   rec_loading: "Lese das Rezept …",
   rec_coffee: "Kaffee",
   rec_milk: "Milch",

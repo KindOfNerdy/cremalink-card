@@ -69,7 +69,7 @@ The card adapts to the width it gets on the dashboard: on a wide card the drinks
 
 Without pictures the tiles use icons. To use your own pictures, put them into your `www` folder (for example `config/www/coffee/espresso.webp`) and set `images.drinks: /local/coffee/{drink}.webp`. The file name is the drink key shown in the entity's options (a custom recipe uses the file of the drink it is shown as, e.g. `latte_macchiato`); drinks without a picture keep their icon (`espresso`, `cappuccino`, `flat_white` …).
 
-If you change an amount of one of your own recipes with the sliders, two buttons appear below them: *Save in recipe* and *Save and brew* (the brew button keeps brewing the changed amounts once, without saving).
+If you change values with the sliders, two buttons appear below them, like *save* in the Coffee Link app: *Save in profile* (standard drinks) or *Save in recipe* (your own recipes), and *Save and brew*. The brew button keeps brewing the changed values once, without saving. For cold and cold to-go drinks the machine keeps the coffee, milk and water amounts fixed, so only their other values can be saved. Needs the integration version with `cremalink_ha.save_drink`.
 
 The tabs use the drink ids and the favorites from the integration where it provides them (`option_beverages` and `favorite_beverages` attributes of the recipe select) and the drink's name otherwise.
 
