@@ -79,13 +79,22 @@ The second card, for things you rarely change. Add "Cremalink Machine Manager" f
 type: custom:cremalink-admin-card
 ```
 
-It holds three sections, all open:
+It holds three sections. Each one can be folded; they are open at first and the card remembers what you folded (per browser, separately from the Coffee Machine card):
 
 - **Favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. This needs the integration version with the `cremalink_ha.set_favorites` action and a machine that is awake.
 - **Machine settings:** beep, energy saving, coffee temperature, auto-off, water hardness, plus when the counters were last updated and the Wi-Fi module firmware.
 - **Maintenance:** the same bars and counters as in the Coffee Machine card.
 
-Set `device_id` only if you have more than one machine.
+| Option | Default | Description |
+|---|---|---|
+| `hide` | – | Sections to hide: `favorites`, `settings`, `maintenance` |
+| `name` | device name | Title of the card |
+| `device_id` | first machine | Device of the machine |
+
+```yaml
+type: custom:cremalink-admin-card
+hide: [maintenance]
+```
 
 ## Support
 

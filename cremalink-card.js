@@ -63,7 +63,8 @@ const TEXT = {
     ed_hide_profile: "Profile",
     ed_hide_alarms: "Warnings",
     ed_hide_maintenance: "Maintenance",
-    ed_hide_settings: "Settings",
+    ed_hide_favorites: "Favorites",
+    ed_hide_settings: "Machine settings",
     ed_name: "Title",
     ed_tab_labels: "Show the text on the tabs",
     ed_show_default_profiles: "Show profiles with factory names",
@@ -129,7 +130,8 @@ const TEXT = {
     ed_hide_profile: "Profil",
     ed_hide_alarms: "Warnungen",
     ed_hide_maintenance: "Wartung",
-    ed_hide_settings: "Einstellungen",
+    ed_hide_favorites: "Favoriten",
+    ed_hide_settings: "Maschineneinstellungen",
     ed_name: "Titel",
     ed_tab_labels: "Text auf den Tabs zeigen",
     ed_show_default_profiles: "Profile mit Werksnamen zeigen",
@@ -333,7 +335,7 @@ class CremalinkCard extends HTMLElement {
             select: {
               multiple: true,
               mode: "list",
-              options: options(["header", "recipes", "sliders", "profile", "alarms", "maintenance", "settings"], "ed_hide_"),
+              options: options(["header", "recipes", "sliders", "profile", "alarms", "maintenance"], "ed_hide_"),
             },
           },
         },
@@ -1270,8 +1272,25 @@ class CremalinkAdminCard extends CremalinkCard {
     this._base = ""; // the machine's list the draft started from (JSON)
     this._drag = null;
     this._saving = false;
+    // Sections are open by default; what you fold is remembered per browser,
+    // separately from the main card.
+    let open = {};
+    try {
+      open = JSON.parse(localStorage.getItem("cremalink-admin-card-open") || "{}") || {};
+    } catch (e) {
+      /* storage not available */
+    }
+    this._favOpen = open.fav !== false;
+    this._maintOpen = open.maint !== false;
+    this._settingsOpen = open.settings !== false;
     const root = this.shadowRoot;
     root.addEventListener("click", (e) => {
+      if (e.target.closest("[data-act='toggle-fav']")) {
+        this._favOpen = !this._favOpen;
+        this._saveOpen();
+        this._refresh();
+        return;
+      }
       const el = e.target.closest("[data-fav]");
       if (!el || el.disabled) return;
       const key = el.dataset.key;
@@ -1297,10 +1316,20 @@ class CremalinkAdminCard extends CremalinkCard {
   static getConfigForm() {
     return {
       schema: [
+        {
+          name: "hide",
+          selector: {
+            select: {
+              multiple: true,
+              mode: "list",
+              options: ["favorites", "settings", "maintenance"].map((v) => ({ value: v, label: uiText(`ed_hide_${v}`) })),
+            },
+          },
+        },
         { name: "name", selector: { text: {} } },
         { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
       ],
-      computeLabel: (schema) => uiText(`ed_${schema.name}_admin`),
+      computeLabel: (schema) => (schema.name === "hide" ? uiText("ed_hide") : uiText(`ed_${schema.name}_admin`)),
     };
   }
 
@@ -1317,11 +1346,6 @@ class CremalinkAdminCard extends CremalinkCard {
     this._found = null;
     this._sig = null;
     if (this._hass) this._update();
-  }
-
-  // the admin card shows its sections open, without a toggle
-  _fold(act, open, title, inner) {
-    return `<div class="fold"><div class="fold-head">${title}</div>${inner}</div>`;
   }
 
   // do not redraw under a finger that is dragging
@@ -1341,6 +1365,17 @@ class CremalinkAdminCard extends CremalinkCard {
       : this._cache.recipe;
     if (!known || !Array.isArray(known.options)) return null;
     return { st, live, options: known.options, ids: known.ids || {}, favorites: known.favorites || [], icons: known.icons || {} };
+  }
+
+  _saveOpen() {
+    try {
+      localStorage.setItem(
+        "cremalink-admin-card-open",
+        JSON.stringify({ fav: this._favOpen, maint: this._maintOpen, settings: this._settingsOpen })
+      );
+    } catch (e) {
+      /* storage not available */
+    }
   }
 
   _move(key, dir) {
@@ -1414,6 +1449,7 @@ class CremalinkAdminCard extends CremalinkCard {
 
   _render() {
     const known = this._known();
+    const hide = this._hide;
     const name = this._config.name || this._found?.deviceName || "";
     const profile = this._state("profile");
     const profileName = profile && profile.state !== "unavailable" ? profile.state : "";
@@ -1453,19 +1489,19 @@ class CremalinkAdminCard extends CremalinkCard {
           ${free.map((o) => `<option value="${esc(o)}">${esc(this._hass.formatEntityState(known.st, o))}</option>`).join("")}</select>`;
       const canSave = dirty && known.live && !this._saving;
       const notes = [full ? this._t("fav_max") : "", !known.live ? this._t("fav_asleep") : ""].filter(Boolean).join(" ");
-      inner = `<div class="fold"><div class="fold-head">${this._t("fav_section")}</div><p class="hint">${this._t("fav_hint")}</p>
+      const favInner = `<p class="hint">${this._t("fav_hint")}</p>
         ${draft.length ? `<ol class="favs">${rows}</ol>` : `<p class="note">${this._t("fav_empty")}</p>`}
         <div class="addrow">${add}</div>
         ${notes ? `<p class="note">${notes}</p>` : ""}
         <div class="actions">
           <button class="primary" data-fav="save" ${canSave ? "" : "disabled"}>${this._saving ? this._t("fav_saving") : this._t("fav_save")}</button>
           <button class="ghost" data-fav="reset" ${dirty && !this._saving ? "" : "disabled"}>${this._t("fav_reset")}</button>
-        </div></div>`;
+        </div>`;
+      inner = hide.includes("favorites") ? "" : this._fold("toggle-fav", this._favOpen, this._t("fav_section"), favInner);
     }
     this.shadowRoot.innerHTML = `
       <style>
         ${this._css()}
-        .fold-head { font-weight: 600; min-height: 40px; display: flex; align-items: center; }
         .title { font-size: 18px; font-weight: 600; line-height: 1.2; }
         .sub { font-size: 12px; color: var(--secondary-text-color); margin-top: 2px; }
         .hint, .note { font-size: 12px; color: var(--secondary-text-color); margin: 10px 0; }
@@ -1495,7 +1531,7 @@ class CremalinkAdminCard extends CremalinkCard {
         <div class="title">${esc(name)} · ${this._t("admin_title")}</div>
         <div class="sub">${profileName ? this._t("fav_profile", { name: esc(profileName) }) : ""}</div>
         ${inner}
-        ${known ? this._settings() + this._maintenance() : ""}
+        ${known ? (hide.includes("settings") ? "" : this._settings()) + (hide.includes("maintenance") ? "" : this._maintenance()) : ""}
         <div class="msg">${esc(this._message)}</div>
       </ha-card>`;
   }
