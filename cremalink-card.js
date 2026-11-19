@@ -793,7 +793,7 @@ class CremalinkCard extends HTMLElement {
     const options = (st.attributes.options || [])
       .map(
         (o) =>
-          `<option value="${o}" ${o === st.state ? "selected" : ""}>${this._hass.formatEntityState(st, o)}</option>`
+          `<option value="${esc(o)}" ${o === st.state ? "selected" : ""}>${esc(this._hass.formatEntityState(st, o))}</option>`
       )
       .join("");
     return `<select data-act="select" data-entity="${entity}" aria-label="${this._label(st)}" ${enabled ? "" : "disabled"}>${options}</select>`;
@@ -857,7 +857,7 @@ class CremalinkCard extends HTMLElement {
       <div class="head">
         <div class="visual">${visual}</div>
         <div class="text">
-          <div class="name">${name}</div>
+          <div class="name">${esc(name)}</div>
           <div class="status" style="color:${color}">${phaseText || (dispensing ? this._t("dispensing") : status ? hass.formatEntityState(status) : "")}</div>
           ${report ? `<div class="sub">${this._t("last_report", { when: this._since(report.state) })}</div>` : ""}
         </div>
@@ -949,9 +949,9 @@ class CremalinkCard extends HTMLElement {
         const visual = picture
           ? `<img class="d-pic" src="${picture}" data-icon="${drinkIcon(key)}" alt="" loading="lazy">`
           : `<ha-icon icon="${drinkIcon(key)}"></ha-icon>`;
-        return `<button class="drink ${sel ? "sel" : ""}" data-act="drink" data-entity="${st.entity_id}" data-value="${o}"
+        return `<button class="drink ${sel ? "sel" : ""}" data-act="drink" data-entity="${st.entity_id}" data-value="${esc(o)}"
             aria-pressed="${sel}" ${locked ? "disabled" : ""}>
-            ${visual}<span class="d-name">${this._hass.formatEntityState(st, o)}</span></button>`;
+            ${visual}<span class="d-name">${esc(this._hass.formatEntityState(st, o))}</span></button>`;
       })
       .join("");
     return `<div class="section"><div class="tabs ${labels ? "" : "icons"}" role="tablist">${tabs}</div>${sub}<div class="drinks">${tiles}</div></div>`;
@@ -1078,7 +1078,7 @@ class CremalinkCard extends HTMLElement {
       .map((o) => {
         const sel = o === known.state;
         return `<button class="seg-btn ${sel ? "on" : ""}" role="radio" aria-checked="${sel}" data-act="pick"
-          data-entity="${st.entity_id}" data-value="${o}" ${brewing ? "disabled" : ""}>${this._hass.formatEntityState(st, o)}</button>`;
+          data-entity="${st.entity_id}" data-value="${esc(o)}" ${brewing ? "disabled" : ""}>${esc(this._hass.formatEntityState(st, o))}</button>`;
       })
       .join("");
     return `<div class="section-title">${this._t("profile")}</div><div class="seg" role="radiogroup">${buttons}</div>`;
@@ -1316,7 +1316,7 @@ class CremalinkCard extends HTMLElement {
     if (mode !== "control") {
       if (!hide.includes("maintenance")) body += this._maintenance();
     }
-    body += `<div class="msg">${this._message}</div>`;
+    body += `<div class="msg">${esc(this._message)}</div>`;
     // Keep the card's height and the drinks list's scroll position while the content is
     // rebuilt; otherwise Safari on iOS jumps the page to the card on every tap.
     const height = this.offsetHeight || 0;
