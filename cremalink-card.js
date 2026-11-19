@@ -786,7 +786,7 @@ class CremalinkCard extends HTMLElement {
       : `<ha-icon class="pic icon" icon="mdi:coffee-maker"></ha-icon>`;
     const on = power && power.state === "on";
     const powerBtn = power && power.state !== "unavailable"
-      ? `<button class="btn icon-only ${on ? "" : "primary"}" data-act="power" data-entity="${power.entity_id}" data-on="${on ? 1 : 0}"
+      ? `<button class="btn icon-only ${on ? "primary" : ""}" data-act="power" data-entity="${power.entity_id}" data-on="${on ? 1 : 0}"
            title="${this._t(on ? "power_off" : "power_on")}" aria-label="${this._t(on ? "power_off" : "power_on")}"
            ${this._busy.has(power.entity_id) ? "disabled" : ""}>
            <ha-icon icon="${this._busy.has(power.entity_id) ? "mdi:loading" : "mdi:power"}" class="${this._busy.has(power.entity_id) ? "spin" : ""}"></ha-icon></button>`
