@@ -71,6 +71,16 @@ Without pictures the tiles use icons. To use your own pictures, put them into yo
 
 The tabs use the drink ids and the favorites from the integration where it provides them (`option_beverages` and `favorite_beverages` attributes of the recipe select) and the drink's name otherwise.
 
+## Admin card
+
+A second card in the same file, for things you rarely change. For now it edits the **favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. It needs the integration version with the `cremalink_ha.set_favorites` action and a machine that is awake.
+
+```yaml
+type: custom:cremalink-admin-card
+```
+
+Set `device_id` only if you have more than one machine.
+
 ## Support
 
 If this saves you time, you can [buy me a coffee on Ko-fi](https://ko-fi.com/kindofnerdy) ☕

@@ -1208,3 +1208,290 @@ window.customCards.push({
   name: "Cremalink Coffee Card",
   description: "Status, drinks, sliders and brew button for coffee machines set up with cremalink-ha.",
 });
+
+// ---- admin card -----------------------------------------------------------
+// A second card in the same file for things you rarely change. It reuses the
+// main card's entity discovery, texts and drink pictures; for now it holds the
+// favourites editor (drag and drop, plus buttons for the keyboard and for taps).
+
+Object.assign(TEXT.en, {
+  admin_title: "Favorites",
+  fav_profile: "Profile {name}",
+  fav_hint: "Drag the grip to change the order. The first drink is the first favorite on the machine.",
+  fav_empty: "No favorites yet. Add a drink below.",
+  fav_add: "Add a drink …",
+  fav_save: "Save on machine",
+  fav_reset: "Discard changes",
+  fav_saving: "Saving …",
+  fav_max: "A profile can have at most 12 favorites.",
+  fav_asleep: "The machine is asleep. Wake it up to save.",
+  fav_grip: "Drag to reorder",
+  fav_up: "Move up",
+  fav_down: "Move down",
+  fav_remove: "Remove from favorites",
+  ed_name_admin: "Name",
+  ed_device_id_admin: "Machine",
+});
+Object.assign(TEXT.de, {
+  admin_title: "Favoriten",
+  fav_profile: "Profil {name}",
+  fav_hint: "Zieh am Griff, um die Reihenfolge zu ändern. Das erste Getränk ist der erste Favorit an der Maschine.",
+  fav_empty: "Noch keine Favoriten. Füge unten ein Getränk hinzu.",
+  fav_add: "Getränk hinzufügen …",
+  fav_save: "Auf der Maschine speichern",
+  fav_reset: "Änderungen verwerfen",
+  fav_saving: "Speichere …",
+  fav_max: "Ein Profil kann höchstens 12 Favoriten haben.",
+  fav_asleep: "Die Maschine schläft. Zum Speichern bitte aufwecken.",
+  fav_grip: "Zum Sortieren ziehen",
+  fav_up: "Nach oben",
+  fav_down: "Nach unten",
+  fav_remove: "Aus den Favoriten entfernen",
+  ed_name_admin: "Name",
+  ed_device_id_admin: "Maschine",
+});
+
+const MAX_FAVORITES = 12;
+
+function esc(text) {
+  return String(text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+}
+
+class CremalinkAdminCard extends CremalinkCard {
+  constructor() {
+    super();
+    this._draft = null; // favourites being edited, as select options in order
+    this._base = ""; // the machine's list the draft started from (JSON)
+    this._drag = null;
+    this._saving = false;
+    const root = this.shadowRoot;
+    root.addEventListener("click", (e) => {
+      const el = e.target.closest("[data-fav]");
+      if (!el || el.disabled) return;
+      const key = el.dataset.key;
+      const act = el.dataset.fav;
+      if (act === "up" || act === "down") this._move(key, act === "up" ? -1 : 1);
+      if (act === "remove") this._draft = this._draft.filter((o) => o !== key);
+      if (act === "reset") this._draft = JSON.parse(this._base || "[]");
+      if (act === "save") return this._save();
+      this._refresh();
+    });
+    root.addEventListener("change", (e) => {
+      if (e.target?.dataset?.fav !== "add" || !e.target.value) return;
+      if (this._draft.length < MAX_FAVORITES && !this._draft.includes(e.target.value)) this._draft.push(e.target.value);
+      e.target.blur(); // the card does not redraw under an open drop-down
+      this._refresh();
+    });
+    root.addEventListener("pointerdown", (e) => this._dragStart(e));
+    root.addEventListener("pointermove", (e) => this._dragMove(e));
+    root.addEventListener("pointerup", (e) => this._dragEnd(e));
+    root.addEventListener("pointercancel", (e) => this._dragEnd(e));
+  }
+
+  static getConfigForm() {
+    return {
+      schema: [
+        { name: "name", selector: { text: {} } },
+        { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
+      ],
+      computeLabel: (schema) => uiText(`ed_${schema.name}_admin`),
+    };
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+
+  getCardSize() {
+    return 8;
+  }
+
+  setConfig(config) {
+    this._config = { ...config, mode: "full" };
+    this._found = null;
+    this._sig = null;
+    if (this._hass) this._update();
+  }
+
+  // do not redraw under a finger that is dragging
+  _update() {
+    if (this._drag) return;
+    super._update();
+  }
+
+  // The drinks that can be favourites, from the live select or the last known list.
+  _known() {
+    const st = this._state("recipe");
+    if (!st) return null;
+    const live = st.state !== "unavailable";
+    const a = st.attributes;
+    const known = live
+      ? { options: a.options, ids: a.option_beverages, favorites: a.favorite_beverages, icons: a.option_icons }
+      : this._cache.recipe;
+    if (!known || !Array.isArray(known.options)) return null;
+    return { st, live, options: known.options, ids: known.ids || {}, favorites: known.favorites || [], icons: known.icons || {} };
+  }
+
+  _move(key, dir) {
+    const i = this._draft.indexOf(key);
+    const j = i + dir;
+    if (i < 0 || j < 0 || j >= this._draft.length) return;
+    [this._draft[i], this._draft[j]] = [this._draft[j], this._draft[i]];
+  }
+
+  async _save() {
+    const known = this._known();
+    if (!known || this._saving) return;
+    const ids = this._draft.map((o) => known.ids[o]).filter((id) => Number.isInteger(id));
+    this._saving = true;
+    this._refresh();
+    try {
+      await this._hass.callService("cremalink_ha", "set_favorites", { device_id: this._found.deviceId, favorites: ids });
+    } catch (err) {
+      this._error(err);
+    } finally {
+      this._saving = false;
+      this._refresh();
+    }
+  }
+
+  // ---- drag and drop (pointer events: works with mouse, pen and touch) -----
+
+  _dragStart(e) {
+    const grip = e.target.closest?.("[data-grip]");
+    if (!grip || this._saving) return;
+    const row = grip.closest(".fav");
+    e.preventDefault();
+    grip.setPointerCapture(e.pointerId);
+    this._drag = { row, list: row.parentElement, startY: e.clientY, id: e.pointerId };
+    row.classList.add("drag");
+  }
+
+  _dragMove(e) {
+    const d = this._drag;
+    if (!d || e.pointerId !== d.id) return;
+    const place = () => (d.row.style.transform = `translateY(${e.clientY - d.startY}px)`);
+    place();
+    for (const dir of [-1, 1]) {
+      for (;;) {
+        const sib = dir < 0 ? d.row.previousElementSibling : d.row.nextElementSibling;
+        if (!sib) break;
+        const mid = d.row.getBoundingClientRect();
+        const center = mid.top + mid.height / 2;
+        const s = sib.getBoundingClientRect();
+        const over = dir < 0 ? center < s.top + s.height / 2 : center > s.top + s.height / 2;
+        if (!over) break;
+        const before = d.row.offsetTop;
+        d.list.insertBefore(d.row, dir < 0 ? sib : sib.nextElementSibling);
+        d.startY += d.row.offsetTop - before; // keep the row under the pointer
+        place();
+      }
+    }
+  }
+
+  _dragEnd(e) {
+    const d = this._drag;
+    if (!d || e.pointerId !== d.id) return;
+    d.row.classList.remove("drag");
+    d.row.style.transform = "";
+    this._draft = [...d.list.children].map((li) => li.dataset.key);
+    this._drag = null;
+    this._refresh();
+  }
+
+  // ---- rendering -----------------------------------------------------------
+
+  _render() {
+    const known = this._known();
+    const name = this._config.name || this._found?.deviceName || "";
+    const profile = this._state("profile");
+    const profileName = profile && profile.state !== "unavailable" ? profile.state : "";
+    let inner = "";
+    if (!known) {
+      inner = `<div class="note">${this._t("no_device")}</div>`;
+    } else {
+      const byId = Object.fromEntries(known.options.filter((o) => Number.isInteger(known.ids[o])).map((o) => [known.ids[o], o]));
+      const machine = known.favorites.map((id) => byId[id]).filter(Boolean);
+      const machineJson = JSON.stringify(machine);
+      const edited = this._draft !== null && JSON.stringify(this._draft) !== this._base;
+      if (this._draft === null || (machineJson !== this._base && !edited)) this._draft = [...machine];
+      this._base = machineJson;
+      const draft = this._draft.filter((o) => known.options.includes(o));
+      const dirty = JSON.stringify(draft) !== machineJson;
+      const rows = draft
+        .map((o, i) => {
+          const key = SYMBOL_DRINK[known.icons[o]] || o;
+          const picture = this._drinkPicture(key);
+          const visual = picture
+            ? `<img class="pic" src="${picture}" alt="" loading="lazy">`
+            : `<ha-icon class="pic" icon="${drinkIcon(key)}"></ha-icon>`;
+          const k = esc(o);
+          return `<li class="fav" data-key="${k}">
+            <button class="grip" data-grip aria-label="${this._t("fav_grip")}" title="${this._t("fav_grip")}"><ha-icon icon="mdi:drag"></ha-icon></button>
+            <span class="num">${i + 1}</span>${visual}<span class="fname">${esc(this._hass.formatEntityState(known.st, o))}</span>
+            <button class="ib" data-fav="up" data-key="${k}" ${i === 0 ? "disabled" : ""} aria-label="${this._t("fav_up")}" title="${this._t("fav_up")}"><ha-icon icon="mdi:chevron-up"></ha-icon></button>
+            <button class="ib" data-fav="down" data-key="${k}" ${i === draft.length - 1 ? "disabled" : ""} aria-label="${this._t("fav_down")}" title="${this._t("fav_down")}"><ha-icon icon="mdi:chevron-down"></ha-icon></button>
+            <button class="ib" data-fav="remove" data-key="${k}" aria-label="${this._t("fav_remove")}" title="${this._t("fav_remove")}"><ha-icon icon="mdi:close"></ha-icon></button>
+          </li>`;
+        })
+        .join("");
+      const free = known.options.filter((o) => Number.isInteger(known.ids[o]) && !draft.includes(o));
+      const full = draft.length >= MAX_FAVORITES;
+      const add = `<select data-fav="add" aria-label="${this._t("fav_add")}" ${full || !free.length || this._saving ? "disabled" : ""}>
+          <option value="">${this._t("fav_add")}</option>
+          ${free.map((o) => `<option value="${esc(o)}">${esc(this._hass.formatEntityState(known.st, o))}</option>`).join("")}</select>`;
+      const canSave = dirty && known.live && !this._saving;
+      const notes = [full ? this._t("fav_max") : "", !known.live ? this._t("fav_asleep") : ""].filter(Boolean).join(" ");
+      inner = `<p class="hint">${this._t("fav_hint")}</p>
+        ${draft.length ? `<ol class="favs">${rows}</ol>` : `<p class="note">${this._t("fav_empty")}</p>`}
+        <div class="addrow">${add}</div>
+        ${notes ? `<p class="note">${notes}</p>` : ""}
+        <div class="actions">
+          <button class="primary" data-fav="save" ${canSave ? "" : "disabled"}>${this._saving ? this._t("fav_saving") : this._t("fav_save")}</button>
+          <button class="ghost" data-fav="reset" ${dirty && !this._saving ? "" : "disabled"}>${this._t("fav_reset")}</button>
+        </div>`;
+    }
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; container-type: inline-size; }
+        ha-card { padding: 12px 14px; }
+        .title { font-size: 18px; font-weight: 600; line-height: 1.2; }
+        .sub { font-size: 12px; color: var(--secondary-text-color); margin-top: 2px; }
+        .hint, .note { font-size: 12px; color: var(--secondary-text-color); margin: 10px 0; }
+        .favs { list-style: none; margin: 8px 0; padding: 0; }
+        .fav { display: flex; align-items: center; gap: 8px; padding: 6px 8px; margin-bottom: 6px; border-radius: 10px;
+          background: var(--secondary-background-color); position: relative; }
+        .fav.drag { z-index: 2; box-shadow: 0 4px 14px rgba(0,0,0,.35); background: var(--card-background-color); outline: 2px solid var(--primary-color); }
+        .grip { touch-action: none; cursor: grab; border: 0; background: transparent; color: var(--secondary-text-color);
+          width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; padding: 0; }
+        .grip:hover, .ib:hover:not(:disabled) { background: var(--divider-color); }
+        .num { width: 18px; text-align: right; font-size: 12px; color: var(--secondary-text-color); }
+        .pic { width: 32px; height: 32px; object-fit: contain; --mdc-icon-size: 28px; flex: none; }
+        .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ib { border: 0; background: transparent; color: var(--primary-text-color); cursor: pointer; width: 32px; height: 32px;
+          border-radius: 8px; display: grid; place-items: center; padding: 0; }
+        .ib:disabled { opacity: .3; cursor: default; }
+        select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--divider-color);
+          background: var(--secondary-background-color); color: var(--primary-text-color); font: inherit; }
+        .actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+        .actions button { font: inherit; padding: 10px 16px; border-radius: 999px; border: 1px solid var(--divider-color); cursor: pointer; }
+        .primary { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: transparent !important; }
+        .ghost { background: transparent; color: var(--primary-text-color); }
+        .actions button:disabled { opacity: .45; cursor: default; }
+        .msg { color: var(--error-color); font-size: 12px; min-height: 1em; margin-top: 8px; }
+      </style>
+      <ha-card>
+        <div class="title">${esc(name)} · ${this._t("admin_title")}</div>
+        <div class="sub">${profileName ? this._t("fav_profile", { name: esc(profileName) }) : ""}</div>
+        ${inner}
+        <div class="msg">${esc(this._message)}</div>
+      </ha-card>`;
+  }
+}
+
+customElements.define("cremalink-admin-card", CremalinkAdminCard);
+window.customCards.push({
+  type: "cremalink-admin-card",
+  name: "Cremalink Admin Card",
+  description: "Favourite drinks of a coffee machine set up with cremalink-ha: reorder by drag and drop and save on the machine.",
+});
