@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.1.4";
+const CARD_VERSION = "0.1.5";
 
 const TEXT = {
   en: {
@@ -1001,7 +1001,7 @@ class CremalinkCard extends HTMLElement {
         <button class="switch ${on ? "on" : ""}" data-act="toggle-switch" data-entity="${st.entity_id}" data-on="${on ? 1 : 0}"
           role="switch" aria-checked="${on}" aria-label="${this._label(st)}"><span></span></button></div>`);
     }
-    for (const tk of ["setting_auto_off", "setting_water_hardness"]) {
+    for (const tk of ["setting_temperature", "setting_auto_off", "setting_water_hardness"]) {
       const st = this._state(tk);
       if (!st || st.state === "unavailable") continue;
       rows.push(`<div class="row"><div class="row-label">${this._label(st)}</div>${this._dropdown(st.entity_id)}</div>`);
