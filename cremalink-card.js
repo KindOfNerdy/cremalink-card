@@ -21,6 +21,7 @@ const TEXT = {
     hint_loading: "Loading the recipe values from the machine …",
     hint_defaults: "Showing factory values – the profile's values are still being read.",
     hint_busy: "The machine is busy.",
+    dispensing: "Dispensing a drink",
     hint_pot: "The pot can only be set and started on the machine itself.",
     hint_unavailable: "The machine does not accept a brew right now.",
     last_report: "Reported {when}",
@@ -89,6 +90,7 @@ const TEXT = {
     hint_loading: "Die Rezeptwerte werden von der Maschine geladen …",
     hint_defaults: "Es werden Werkswerte gezeigt – die Werte des Profils werden noch gelesen.",
     hint_busy: "Die Maschine ist beschäftigt.",
+    dispensing: "Getränk wird ausgegeben",
     hint_pot: "Die Kanne lässt sich nur an der Maschine selbst einstellen und starten.",
     hint_unavailable: "Die Maschine nimmt gerade keine Zubereitung an.",
     last_report: "Gemeldet {when}",
@@ -821,7 +823,9 @@ class CremalinkCard extends HTMLElement {
     const power = this._state("power");
     const report = this._state("cremalink_last_report");
     const name = this._config.name || this._found.deviceName || "Coffee machine";
-    const color = statusColor(f.status);
+    // Coffee and other drinks keep the status "ready" while they run: say what happens.
+    const dispensing = f.running && IDLE.includes(f.status);
+    const color = statusColor(dispensing ? "dispensing" : f.status);
     const pic = this._config.images?.device;
     const visual = pic
       ? `<img class="pic" src="${pic}" alt="">`
@@ -844,7 +848,7 @@ class CremalinkCard extends HTMLElement {
         <div class="visual">${visual}</div>
         <div class="text">
           <div class="name">${name}</div>
-          <div class="status" style="color:${color}">${status ? hass.formatEntityState(status) : ""}</div>
+          <div class="status" style="color:${color}">${dispensing ? this._t("dispensing") : status ? hass.formatEntityState(status) : ""}</div>
           ${report ? `<div class="sub">${this._t("last_report", { when: this._since(report.state) })}</div>` : ""}
         </div>
         ${powerBtn}
