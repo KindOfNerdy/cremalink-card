@@ -63,6 +63,7 @@ const TEXT = {
     ed_hide_profile: "Profile",
     ed_hide_alarms: "Warnings",
     ed_hide_maintenance: "Maintenance",
+    ed_hide_title: "Title",
     ed_hide_favorites: "Favorites",
     ed_hide_settings: "Machine settings",
     ed_name: "Title",
@@ -130,6 +131,7 @@ const TEXT = {
     ed_hide_profile: "Profil",
     ed_hide_alarms: "Warnungen",
     ed_hide_maintenance: "Wartung",
+    ed_hide_title: "Titel",
     ed_hide_favorites: "Favoriten",
     ed_hide_settings: "Maschineneinstellungen",
     ed_name: "Titel",
@@ -1260,6 +1262,7 @@ Object.assign(TEXT.de, {
 });
 
 const MAX_FAVORITES = 12;
+const ADMIN_SECTIONS = ["favorites", "settings", "maintenance"];
 
 function esc(text) {
   return String(text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -1322,7 +1325,7 @@ class CremalinkAdminCard extends CremalinkCard {
             select: {
               multiple: true,
               mode: "list",
-              options: ["favorites", "settings", "maintenance"].map((v) => ({ value: v, label: uiText(`ed_hide_${v}`) })),
+              options: ["title", "favorites", "settings", "maintenance"].map((v) => ({ value: v, label: uiText(`ed_hide_${v}`) })),
             },
           },
         },
@@ -1342,10 +1345,24 @@ class CremalinkAdminCard extends CremalinkCard {
   }
 
   setConfig(config) {
+    if (config.sections !== undefined) {
+      const ok =
+        Array.isArray(config.sections) &&
+        config.sections.length > 0 &&
+        config.sections.every((x) => ADMIN_SECTIONS.includes(x)) &&
+        new Set(config.sections).size === config.sections.length;
+      if (!ok) throw new Error(`sections must list some of: ${ADMIN_SECTIONS.join(", ")} (each once)`);
+    }
     this._config = { ...config, mode: "full" };
     this._found = null;
     this._sig = null;
     if (this._hass) this._update();
+  }
+
+  // The sections to show, in the order given by `sections` (default: all, in the usual order).
+  get _sectionOrder() {
+    const wanted = Array.isArray(this._config.sections) ? this._config.sections : ADMIN_SECTIONS;
+    return wanted.filter((x) => !this._hide.includes(x));
   }
 
   // do not redraw under a finger that is dragging
@@ -1453,6 +1470,7 @@ class CremalinkAdminCard extends CremalinkCard {
     const name = this._config.name || this._found?.deviceName || "";
     const profile = this._state("profile");
     const profileName = profile && profile.state !== "unavailable" ? profile.state : "";
+    let favorites = "";
     let inner = "";
     if (!known) {
       inner = `<div class="note">${this._t("no_device")}</div>`;
@@ -1497,8 +1515,14 @@ class CremalinkAdminCard extends CremalinkCard {
           <button class="primary" data-fav="save" ${canSave ? "" : "disabled"}>${this._saving ? this._t("fav_saving") : this._t("fav_save")}</button>
           <button class="ghost" data-fav="reset" ${dirty && !this._saving ? "" : "disabled"}>${this._t("fav_reset")}</button>
         </div>`;
-      inner = hide.includes("favorites") ? "" : this._fold("toggle-fav", this._favOpen, this._t("fav_section"), favInner);
+      favorites = this._fold("toggle-fav", this._favOpen, this._t("fav_section"), favInner);
     }
+    const parts = { favorites, settings: known ? this._settings() : "", maintenance: known ? this._maintenance() : "" };
+    const body = known ? this._sectionOrder.map((k) => parts[k] || "").join("") : "";
+    const titleHtml = hide.includes("title")
+      ? ""
+      : `<div class="title">${esc(name)} · ${this._t("admin_title")}</div>
+        <div class="sub">${profileName ? this._t("fav_profile", { name: esc(profileName) }) : ""}</div>`;
     this.shadowRoot.innerHTML = `
       <style>
         ${this._css()}
@@ -1528,10 +1552,9 @@ class CremalinkAdminCard extends CremalinkCard {
         .msg { color: var(--error-color); font-size: 12px; min-height: 1em; margin-top: 8px; }
       </style>
       <ha-card>
-        <div class="title">${esc(name)} · ${this._t("admin_title")}</div>
-        <div class="sub">${profileName ? this._t("fav_profile", { name: esc(profileName) }) : ""}</div>
+        ${titleHtml}
         ${inner}
-        ${known ? (hide.includes("settings") ? "" : this._settings()) + (hide.includes("maintenance") ? "" : this._maintenance()) : ""}
+        ${body}
         <div class="msg">${esc(this._message)}</div>
       </ha-card>`;
   }

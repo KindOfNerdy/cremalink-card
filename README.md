@@ -87,13 +87,17 @@ It holds three sections. Each one can be folded; they are open at first and the 
 
 | Option | Default | Description |
 |---|---|---|
-| `hide` | – | Sections to hide: `favorites`, `settings`, `maintenance` |
+| `hide` | – | What to hide: `title`, `favorites`, `settings`, `maintenance` |
+| `sections` | all | YAML only: which sections to show and in what order, e.g. `[maintenance, favorites]` |
 | `name` | device name | Title of the card |
 | `device_id` | first machine | Device of the machine |
 
+You can arrange the sections like separate cards: add the Machine Manager several times, each with one section and without the title, and place them wherever you like on the dashboard.
+
 ```yaml
 type: custom:cremalink-admin-card
-hide: [maintenance]
+hide: [title]
+sections: [settings]
 ```
 
 ## Support
