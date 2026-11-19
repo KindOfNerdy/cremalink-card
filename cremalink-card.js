@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.3.1";
+const CARD_VERSION = "0.4.0";
 
 const TEXT = {
   en: {
@@ -175,11 +175,13 @@ const PARAMS = ["param_coffee", "param_water", "param_milk", "param_taste", "par
 const EXTRA_ALARMS = ["is_watertank_empty", "switch_water_tank_absent", "switch_water_level_low"];
 
 // Custom recipes carry a picture number set on the machine. Like the Coffee Link app,
-// the number stands for one of the drinks (0 cappuccino, 1 espresso, 2 latte macchiato …).
+// the number stands for one of the drinks (0 cappuccino, 1 espresso, 2 latte macchiato …);
+// 18 and 20-25 were checked on the machine's display (18 espresso, 20 cold coffee, 21 to-go cappuccino).
 const SYMBOL_DRINK = [
   "cappuccino", "espresso", "latte_macchiato", "double_espresso", "caffe_latte", "doppio_plus",
   "hot_milk", "americano", "cappuccino_plus", "coffee", "espresso_macchiato", "flat_white",
-  "hot_water", "cold_milk", "long_coffee", "steam", "chocolate", "cappuccino_mix", "hot_water", "tea",
+  "hot_water", "cold_milk", "long_coffee", "steam", "chocolate", "cappuccino_mix", "espresso", "tea",
+  "cold_coffee", "togo_cappuccino", "cappuccino", "cappuccino", "cappuccino", "cappuccino",
 ];
 
 // Icon per drink (own mapping from public MDI icons; pictures are optional via `images`)
@@ -274,6 +276,7 @@ class CremalinkCard extends HTMLElement {
         this._started = { kind: this._selectedKind(), at: Date.now() };
         this._call("switch", "turn_on", entity);
       }
+      if (act === "save-changes") this._saveChanges(el.dataset.brew === "1");
       if (act === "stop") this._call("switch", "turn_off", entity);
       if (act === "power") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
       if (act === "toggle-switch") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
@@ -959,7 +962,54 @@ class CremalinkCard extends HTMLElement {
         return `<div class="slider"><div class="s-label">${this._label(st)}${over}</div>${this._stepper(st)}</div>`;
       })
       .join("");
-    return `<div class="section"><div class="sliders">${rows}</div></div>`;
+    return `<div class="section"><div class="sliders">${rows}</div>${this._saveBar(f)}</div>`;
+  }
+
+  // Changed amounts of one of your own recipes can stay in the recipe (the machine stores
+  // them), with or without pouring the drink.
+  _saveBar(f) {
+    const recipe = this._state("recipe");
+    const id = recipe?.attributes?.selected_beverage;
+    if (!recipe || recipe.state === "unavailable" || !(id >= 230 && id <= 235)) return "";
+    if (!f.params.some((st) => st.attributes.overridden)) return "";
+    const off = f.running || !f.canBrew || this._saving ? "disabled" : "";
+    return `<div class="savebar">
+      <div class="hint">${this._t("sc_hint")}</div>
+      <div class="actions">
+        <button class="btn" data-act="save-changes" data-brew="0" ${off}>${this._t("sc_save")}</button>
+        <button class="btn" data-act="save-changes" data-brew="1" ${off}>${this._t("sc_save_brew")}</button>
+      </div></div>`;
+  }
+
+  async _saveChanges(brew) {
+    const recipe = this._state("recipe");
+    const id = recipe?.attributes?.selected_beverage;
+    if (!recipe || !(id >= 230 && id <= 235) || this._saving) return;
+    const fields = { 1: "coffee", 2: "taste", 9: "milk", 13: "tea_temperature", 15: "water" };
+    const data = {
+      device_id: this._found.deviceId,
+      slot: id - 229,
+      name: recipe.state,
+      icon: Number(recipe.attributes.option_icons?.[recipe.state] ?? 0),
+      brew,
+    };
+    const sliders = PARAMS.map((tk) => this._state(tk)).filter((st) => st && !EMPTY.includes(st.state));
+    for (const st of sliders) {
+      const field = fields[st.attributes.param_id];
+      if (!field || !st.attributes.overridden) continue;
+      const pending = this._pending[st.entity_id];
+      data[field] = pending !== undefined ? pending : Number(st.state);
+    }
+    this._saving = true;
+    this._refresh();
+    try {
+      await this._hass.callService("cremalink_ha", "save_recipe", data);
+    } catch (err) {
+      this._error(err);
+    } finally {
+      this._saving = false;
+      this._refresh();
+    }
   }
 
   _brew(f) {
@@ -1137,6 +1187,8 @@ class CremalinkCard extends HTMLElement {
           .seg-btn { padding: 0 4px; font-size: 13px; }
         }
         .section-title { font-size: 14px; color: var(--secondary-text-color); margin-bottom: 6px; }
+        .savebar { margin-top: 10px; }
+        .savebar .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
         .drinks { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px;
           max-height: 232px; overflow-y: auto; padding: 2px; }
         .drink { all: unset; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -1290,6 +1342,31 @@ Object.assign(TEXT.en, {
   fav_up: "Move up",
   fav_down: "Move down",
   fav_remove: "Remove from favorites",
+  sc_hint: "Changed values: brew them once with Brew, or keep them in this recipe.",
+  sc_save: "Save in recipe",
+  sc_save_brew: "Save and brew",
+  rec_section: "Custom recipes",
+  rec_hint: "The machine has six places for your own drinks. Pick one to create or change it.",
+  rec_slot: "Place {n}",
+  rec_empty: "empty",
+  rec_name: "Name (up to 10 characters)",
+  rec_icon: "Picture on the machine",
+  rec_template: "Start from",
+  rec_template_own: "the recipe in this place",
+  rec_amounts: "Amounts (empty = from the starting recipe)",
+  rec_water: "Water (ml)",
+  rec_coffee: "Coffee (ml)",
+  rec_milk: "Milk (s)",
+  rec_save: "Only save",
+  rec_save_brew: "Save and brew",
+  rec_delete: "Delete",
+  rec_delete_sure: "Really delete?",
+  rec_close: "Close",
+  rec_working: "Working …",
+  rec_asleep: "The machine is asleep. Wake it up first.",
+  rec_need_name: "Give the recipe a name.",
+  rec_need_template: "Choose what to start from.",
+  ed_hide_custom: "Custom recipes",
   ed_name_admin: "Name",
   ed_device_id_admin: "Machine",
 });
@@ -1309,12 +1386,49 @@ Object.assign(TEXT.de, {
   fav_up: "Nach oben",
   fav_down: "Nach unten",
   fav_remove: "Aus den Favoriten entfernen",
+  sc_hint: "Geänderte Werte: einmal mit Zubereiten ausgeben oder im Rezept behalten.",
+  sc_save: "Im Rezept speichern",
+  sc_save_brew: "Speichern und ausgeben",
+  rec_section: "Eigene Rezepte",
+  rec_hint: "Die Maschine hat sechs Plätze für eigene Getränke. Wähle einen, um ihn anzulegen oder zu ändern.",
+  rec_slot: "Platz {n}",
+  rec_empty: "leer",
+  rec_name: "Name (bis 10 Zeichen)",
+  rec_icon: "Bild an der Maschine",
+  rec_template: "Ausgangspunkt",
+  rec_template_own: "das Rezept in diesem Platz",
+  rec_amounts: "Mengen (leer = wie im Ausgangsrezept)",
+  rec_water: "Wasser (ml)",
+  rec_coffee: "Kaffee (ml)",
+  rec_milk: "Milch (s)",
+  rec_save: "Nur speichern",
+  rec_save_brew: "Speichern und ausgeben",
+  rec_delete: "Löschen",
+  rec_delete_sure: "Wirklich löschen?",
+  rec_close: "Schließen",
+  rec_working: "Arbeite …",
+  rec_asleep: "Die Maschine schläft. Bitte zuerst aufwecken.",
+  rec_need_name: "Gib dem Rezept einen Namen.",
+  rec_need_template: "Wähle einen Ausgangspunkt.",
+  ed_hide_custom: "Eigene Rezepte",
   ed_name_admin: "Name",
   ed_device_id_admin: "Maschine",
 });
 
 const MAX_FAVORITES = 12;
-const ADMIN_SECTIONS = ["favorites", "settings", "maintenance"];
+const ADMIN_SECTIONS = ["favorites", "custom", "settings", "maintenance"];
+// The pictures of the machine's display, by symbol number (checked on an Eletta Explore).
+const DISPLAY_PICTURES = {
+  en: ["Cappuccino", "Espresso", "Latte Macchiato", "2x Espresso", "Caffè Latte", "Doppio+", "Hot milk", "Americano",
+    "Cappuccino Doppio+", "Coffee", "Espresso Macchiato", "Flat White", "Hot water", "Cold milk", "Long coffee", "Steam",
+    "Chocolate", "Cappuccino Reverse", "Espresso (small)", "Tea", "Cold coffee", "To-go cappuccino", "Cappuccino 2", "Cappuccino 3",
+    "Cappuccino 4", "Cappuccino 5"],
+  de: ["Cappuccino", "Espresso", "Latte Macchiato", "2x Espresso", "Caffè Latte", "Doppio+", "Heiße Milch", "Americano",
+    "Cappuccino Doppio+", "Kaffee", "Espresso Macchiato", "Flat White", "Heißwasser", "Kalte Milch", "Long Coffee", "Dampf",
+    "Schokolade", "Cappuccino Reverse", "Espresso (klein)", "Tee", "Kalter Kaffee", "To-Go-Cappuccino", "Cappuccino 2", "Cappuccino 3",
+    "Cappuccino 4", "Cappuccino 5"],
+};
+const CUSTOM_BASE = 229; // custom recipe places 1-6 are drinks 230-235
 
 function esc(text) {
   return String(text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -1336,6 +1450,11 @@ class CremalinkAdminCard extends CremalinkCard {
       /* storage not available */
     }
     this._favOpen = open.fav !== false;
+    this._customOpen = open.custom !== false;
+    this._rSlot = null; // place being edited (1-6)
+    this._rForm = {};
+    this._rBusy = false;
+    this._rDeleteArmed = false;
     this._maintOpen = open.maint !== false;
     this._settingsOpen = open.settings !== false;
     const root = this.shadowRoot;
@@ -1346,6 +1465,14 @@ class CremalinkAdminCard extends CremalinkCard {
         this._refresh();
         return;
       }
+      if (e.target.closest("[data-act='toggle-custom']")) {
+        this._customOpen = !this._customOpen;
+        this._saveOpen();
+        this._refresh();
+        return;
+      }
+      const rec = e.target.closest("[data-rec]");
+      if (rec && !rec.disabled) return this._recAction(rec.dataset.rec, rec.dataset);
       const el = e.target.closest("[data-fav]");
       if (!el || el.disabled) return;
       const key = el.dataset.key;
@@ -1356,7 +1483,13 @@ class CremalinkAdminCard extends CremalinkCard {
       if (act === "save") return this._save();
       this._refresh();
     });
+    root.addEventListener("input", (e) => {
+      const f = e.target?.dataset?.recField;
+      if (f) this._rForm[f] = e.target.value;
+    });
     root.addEventListener("change", (e) => {
+      const f = e.target?.dataset?.recField;
+      if (f) this._rForm[f] = e.target.value;
       if (e.target?.dataset?.fav !== "add" || !e.target.value) return;
       if (this._draft.length < MAX_FAVORITES && !this._draft.includes(e.target.value)) this._draft.push(e.target.value);
       e.target.blur(); // the card does not redraw under an open drop-down
@@ -1377,7 +1510,7 @@ class CremalinkAdminCard extends CremalinkCard {
             select: {
               multiple: true,
               mode: "list",
-              options: ["title", "favorites", "settings", "maintenance"].map((v) => ({ value: v, label: uiText(`ed_hide_${v}`) })),
+              options: ["title", "favorites", "custom", "settings", "maintenance"].map((v) => ({ value: v, label: uiText(`ed_hide_${v}`) })),
             },
           },
         },
@@ -1440,7 +1573,7 @@ class CremalinkAdminCard extends CremalinkCard {
     try {
       localStorage.setItem(
         "cremalink-admin-card-open",
-        JSON.stringify({ fav: this._favOpen, maint: this._maintOpen, settings: this._settingsOpen })
+        JSON.stringify({ fav: this._favOpen, custom: this._customOpen, maint: this._maintOpen, settings: this._settingsOpen })
       );
     } catch (e) {
       /* storage not available */
@@ -1468,6 +1601,123 @@ class CremalinkAdminCard extends CremalinkCard {
       this._saving = false;
       this._refresh();
     }
+  }
+
+  // ---- custom recipes -----------------------------------------------------
+
+  _slotName(known, n) {
+    const id = CUSTOM_BASE + n;
+    const option = known.options.find((o) => known.ids[o] === id);
+    if (!option) return null;
+    const name = this._hass.formatEntityState(known.st, option);
+    return /^(custom|eigenes?)\s*\d*$/i.test(name.trim()) ? null : name;
+  }
+
+  _recAction(act, data) {
+    const known = this._known();
+    if (!known || this._rBusy) return;
+    if (act === "open") {
+      const n = Number(data.slot);
+      const name = this._slotName(known, n);
+      const option = known.options.find((o) => known.ids[o] === CUSTOM_BASE + n);
+      this._rSlot = n;
+      this._rDeleteArmed = false;
+      this._rForm = {
+        name: name || "",
+        icon: String(option && known.icons[option] !== undefined ? known.icons[option] : 12),
+        template: name ? "" : "",
+        water: "",
+        coffee: "",
+        milk: "",
+      };
+    } else if (act === "close") {
+      this._rSlot = null;
+      this._rDeleteArmed = false;
+    } else if (act === "save" || act === "brew") {
+      return this._recSave(known, act === "brew");
+    } else if (act === "delete") {
+      if (!this._rDeleteArmed) {
+        this._rDeleteArmed = true;
+        return this._refresh();
+      }
+      return this._recDelete(known);
+    }
+    this._refresh();
+  }
+
+  async _recSave(known, brew) {
+    const f = this._rForm;
+    const n = this._rSlot;
+    if (!known.live) return this._error(new Error(this._t("rec_asleep")));
+    if (!(f.name || "").trim()) return this._error(new Error(this._t("rec_need_name")));
+    const data = { device_id: this._found.deviceId, slot: n, name: f.name.trim(), icon: Number(f.icon), brew };
+    if (f.template) data.template = Number(f.template);
+    else if (!this._slotName(known, n)) return this._error(new Error(this._t("rec_need_template")));
+    for (const k of ["water", "coffee", "milk"]) if (String(f[k] ?? "").trim() !== "") data[k] = Number(f[k]);
+    await this._recCall("save_recipe", data);
+  }
+
+  async _recDelete(known) {
+    if (!known.live) return this._error(new Error(this._t("rec_asleep")));
+    await this._recCall("delete_recipe", { device_id: this._found.deviceId, slot: this._rSlot });
+  }
+
+  async _recCall(service, data) {
+    this._rBusy = true;
+    this._refresh();
+    try {
+      await this._hass.callService("cremalink_ha", service, data);
+      this._rSlot = null;
+      this._rDeleteArmed = false;
+    } catch (err) {
+      this._error(err);
+    } finally {
+      this._rBusy = false;
+      this._refresh();
+    }
+  }
+
+  _customSection(known) {
+    const lang = (this._hass?.language || "en").split("-")[0];
+    const names = DISPLAY_PICTURES[lang] || DISPLAY_PICTURES.en;
+    const places = [1, 2, 3, 4, 5, 6]
+      .map((n) => {
+        const name = this._slotName(known, n);
+        const on = this._rSlot === n;
+        return `<button class="slot ${on ? "sel" : ""}" data-rec="open" data-slot="${n}" aria-pressed="${on}" ${this._rBusy ? "disabled" : ""}>
+          <span class="snum">${n}</span><span class="sname">${name ? esc(name) : `<i>${this._t("rec_empty")}</i>`}</span></button>`;
+      })
+      .join("");
+    let form = "";
+    if (this._rSlot) {
+      const n = this._rSlot;
+      const f = this._rForm;
+      const filled = !!this._slotName(known, n);
+      const drinks = known.options.filter((o) => Number.isInteger(known.ids[o]) && known.ids[o] !== CUSTOM_BASE + n);
+      const tpl = `<select data-rec-field="template">
+        ${filled ? `<option value="" ${f.template === "" ? "selected" : ""}>${this._t("rec_template_own")}</option>` : `<option value="">…</option>`}
+        ${drinks.map((o) => `<option value="${known.ids[o]}" ${String(known.ids[o]) === String(f.template) ? "selected" : ""}>${esc(this._hass.formatEntityState(known.st, o))}</option>`).join("")}</select>`;
+      const icons = `<select data-rec-field="icon">${names
+        .map((label, i) => `<option value="${i}" ${String(i) === String(f.icon) ? "selected" : ""}>${i} · ${esc(label)}</option>`)
+        .join("")}</select>`;
+      const amount = (k) => `<label>${this._t("rec_" + k)}<input type="number" inputmode="decimal" min="0" data-rec-field="${k}" value="${esc(f[k] ?? "")}"></label>`;
+      const busy = this._rBusy;
+      const off = busy || !known.live ? "disabled" : "";
+      form = `<div class="recform">
+        <label>${this._t("rec_name")}<input type="text" maxlength="10" data-rec-field="name" value="${esc(f.name ?? "")}"></label>
+        <label>${this._t("rec_icon")}${icons}</label>
+        <label>${this._t("rec_template")}${tpl}</label>
+        <p class="note">${this._t("rec_amounts")}</p>
+        <div class="amounts">${amount("water")}${amount("coffee")}${amount("milk")}</div>
+        ${!known.live ? `<p class="note">${this._t("rec_asleep")}</p>` : ""}
+        <div class="actions">
+          <button class="primary" data-rec="save" ${off}>${busy ? this._t("rec_working") : this._t("rec_save")}</button>
+          <button class="primary" data-rec="brew" ${off}>${this._t("rec_save_brew")}</button>
+          ${filled ? `<button class="ghost danger" data-rec="delete" ${off}>${this._rDeleteArmed ? this._t("rec_delete_sure") : this._t("rec_delete")}</button>` : ""}
+          <button class="ghost" data-rec="close" ${busy ? "disabled" : ""}>${this._t("rec_close")}</button>
+        </div></div>`;
+    }
+    return this._fold("toggle-custom", this._customOpen, this._t("rec_section"), `<p class="hint">${this._t("rec_hint")}</p><div class="slots">${places}</div>${form}`);
   }
 
   // ---- drag and drop (pointer events: works with mouse, pen and touch) -----
@@ -1569,7 +1819,7 @@ class CremalinkAdminCard extends CremalinkCard {
         </div>`;
       favorites = this._fold("toggle-fav", this._favOpen, this._t("fav_section"), favInner);
     }
-    const parts = { favorites, settings: known ? this._settings() : "", maintenance: known ? this._maintenance() : "" };
+    const parts = { favorites, custom: known ? this._customSection(known) : "", settings: known ? this._settings() : "", maintenance: known ? this._maintenance() : "" };
     const body = known ? this._sectionOrder.map((k) => parts[k] || "").join("") : "";
     const titleHtml = hide.includes("title")
       ? ""
@@ -1601,6 +1851,19 @@ class CremalinkAdminCard extends CremalinkCard {
         .primary { background: var(--primary-color); color: var(--text-primary-color, #fff); border-color: transparent !important; }
         .ghost { background: transparent; color: var(--primary-text-color); }
         .actions button:disabled { opacity: .45; cursor: default; }
+        .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin: 8px 0; }
+        .slot { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 10px; border: 1px solid var(--divider-color);
+          background: var(--secondary-background-color); color: var(--primary-text-color); font: inherit; cursor: pointer; text-align: left; }
+        .slot.sel { outline: 2px solid var(--primary-color); }
+        .slot:disabled { opacity: .5; cursor: default; }
+        .snum { font-size: 12px; color: var(--secondary-text-color); }
+        .sname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .recform { display: grid; gap: 10px; margin-top: 8px; }
+        .recform label { display: grid; gap: 4px; font-size: 12px; color: var(--secondary-text-color); }
+        .recform input, .recform select { padding: 10px; border-radius: 10px; border: 1px solid var(--divider-color);
+          background: var(--secondary-background-color); color: var(--primary-text-color); font: inherit; min-width: 0; }
+        .amounts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .danger { color: var(--error-color); border-color: var(--error-color) !important; }
         .msg { color: var(--error-color); font-size: 12px; min-height: 1em; margin-top: 8px; }
       </style>
       <ha-card>

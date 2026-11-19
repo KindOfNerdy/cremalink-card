@@ -69,6 +69,8 @@ The card adapts to the width it gets on the dashboard: on a wide card the drinks
 
 Without pictures the tiles use icons. To use your own pictures, put them into your `www` folder (for example `config/www/coffee/espresso.webp`) and set `images.drinks: /local/coffee/{drink}.webp`. The file name is the drink key shown in the entity's options (a custom recipe uses the file of the drink it is shown as, e.g. `latte_macchiato`); drinks without a picture keep their icon (`espresso`, `cappuccino`, `flat_white` …).
 
+If you change an amount of one of your own recipes with the sliders, two buttons appear below them: *Save in recipe* and *Save and brew* (the brew button keeps brewing the changed amounts once, without saving).
+
 The tabs use the drink ids and the favorites from the integration where it provides them (`option_beverages` and `favorite_beverages` attributes of the recipe select) and the drink's name otherwise.
 
 ## Cremalink Machine Manager
@@ -79,15 +81,16 @@ The second card, for things you rarely change. Add "Cremalink Machine Manager" f
 type: custom:cremalink-admin-card
 ```
 
-It holds three sections. Each one can be folded; they are open at first and the card remembers what you folded (per browser, separately from the Coffee Machine card):
+It holds four sections. Each one can be folded; they are open at first and the card remembers what you folded (per browser, separately from the Coffee Machine card):
 
 - **Favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. This needs the integration version with the `cremalink_ha.set_favorites` action and a machine that is awake.
+- **Custom recipes**: the machine's six places for your own drinks. Pick a place to create or change a recipe (name, the picture shown on the machine, a drink to start from, optional amounts) and choose *Only save*, *Save and brew* or *Delete* (asks twice). This needs the integration version with the `cremalink_ha.save_recipe` and `cremalink_ha.delete_recipe` actions.
 - **Machine settings:** beep, energy saving, coffee temperature, auto-off, water hardness, plus when the counters were last updated and the Wi-Fi module firmware.
 - **Maintenance:** the same bars and counters as in the Coffee Machine card.
 
 | Option | Default | Description |
 |---|---|---|
-| `hide` | – | What to hide: `title`, `favorites`, `settings`, `maintenance` |
+| `hide` | – | What to hide: `title`, `favorites`, `custom`, `settings`, `maintenance` |
 | `sections` | all | YAML only: which sections to show and in what order, e.g. `[maintenance, favorites]` |
 | `name` | device name | Title of the card |
 | `device_id` | first machine | Device of the machine |
