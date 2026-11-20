@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.5.3";
+const CARD_VERSION = "0.5.4";
 
 const TEXT = {
   en: {
@@ -547,7 +547,7 @@ class CremalinkCard extends HTMLElement {
       release();
       this._refresh();
     }, WAIT_MS);
-    this._hass.callService(domain, service, data).catch((err) => {
+    this._service(domain, service, data).catch((err) => {
       release();
       this._error(err);
     });
@@ -578,7 +578,7 @@ class CremalinkCard extends HTMLElement {
     this[flag] = value;
     this._refresh();
     try {
-      await this._hass.callService("cremalink_ha", service, data);
+      await this._service("cremalink_ha", service, data);
       return true;
     } catch (err) {
       this._error(err);
@@ -590,7 +590,13 @@ class CremalinkCard extends HTMLElement {
   }
 
   _setNumber(entity, value) {
-    this._hass.callService("number", "set_value", { entity_id: entity, value }).catch((err) => this._error(err));
+    this._service("number", "set_value", { entity_id: entity, value }).catch((err) => this._error(err));
+  }
+
+  // Every action goes through here: errors show next to the button (_error), so HA's
+  // own toast is switched off to avoid the same message twice.
+  _service(domain, service, data) {
+    return this._hass.callService(domain, service, data, undefined, false);
   }
 
   // Spinner and text for a button that is waiting for the machine.
@@ -695,14 +701,28 @@ class CremalinkCard extends HTMLElement {
     return this._message ? `<div class="msg" role="alert">${esc(this._message)}</div>` : "";
   }
 
-  _error(err) {
-    this._message = err?.message || String(err);
+  // Shows an error in the user's language: errors of the integration carry a
+  // translation key (same text as HA's toast), anything else its plain message.
+  async _error(err) {
+    this._message = (await this._localizeError(err)) || err?.message || String(err);
     clearTimeout(this._timers.message);
     this._timers.message = setTimeout(() => {
       this._message = "";
       this._refresh();
     }, 8000);
     this._refresh();
+  }
+
+  async _localizeError(err) {
+    const domain = err?.translation_domain;
+    const key = err?.translation_key;
+    if (!domain || !key || !this._hass?.loadBackendTranslation) return "";
+    try {
+      const localize = (await this._hass.loadBackendTranslation("exceptions", domain)) || this._hass.localize;
+      return localize(`component.${domain}.exceptions.${key}.message`, err.translation_placeholders || {});
+    } catch (e) {
+      return "";
+    }
   }
 
   // ---- rendering ---------------------------------------------------------
