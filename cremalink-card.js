@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.5.4";
+const CARD_VERSION = "0.5.5";
 
 const TEXT = {
   en: {
@@ -932,8 +932,10 @@ class CremalinkCard extends HTMLElement {
       </div>`;
   }
 
-  _alarms() {
+  _alarms(f) {
     const active = this._found.alarms
+      // The milk-rinse reminder is set as the milk starts; only show it once the drink is done.
+      .filter((id) => !(f?.running && this._tkOf(id) === "alarm_clean_knob"))
       .map((id) => this._hass.states[id])
       .filter((st) => st && st.state === "on");
     if (!active.length) return "";
@@ -1376,7 +1378,7 @@ class CremalinkCard extends HTMLElement {
     const f = this._flags();
     let body = "";
     if (!hide.includes("header")) body += this._header(f);
-    if (!hide.includes("alarms")) body += this._alarms();
+    if (!hide.includes("alarms")) body += this._alarms(f);
     // Drinks, profile, sliders and the brew button are only of use while the machine is on;
     // in standby the header with its power button, warnings and maintenance are enough.
     if (mode !== "status" && !f.standby) {
