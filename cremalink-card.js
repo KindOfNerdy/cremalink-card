@@ -4,11 +4,11 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.5.2";
+const CARD_VERSION = "0.5.3";
 
 const TEXT = {
   en: {
-    no_device: "No Cremalink coffee machine found. Set one up with the cremalink-ha integration.",
+    no_device: "No coffee machine found. Set it up with the cremalink-ha integration first.",
     brew: "Brew",
     brewing: "Brewing …",
     starting: "Starting …",
@@ -16,16 +16,15 @@ const TEXT = {
     stopping: "Stopping …",
     power_on: "Switch on",
     power_off: "Switch off",
-    hint_standby: "The machine is in standby. Switch it on to brew.",
-    hint_waking: "The machine is waking up.",
-    hint_loading: "Loading the recipe values from the machine …",
-    hint_defaults: "Showing factory values – the profile's values are still being read.",
-    hint_busy: "The machine is busy.",
-    dispensing: "Dispensing a drink",
-    hint_pot: "The pot can only be set and started on the machine itself.",
-    hint_unavailable: "The machine does not accept a brew right now.",
-    last_report: "Reported {when}",
-    never: "no report yet",
+    hint_standby: "The machine is asleep. Wake it up and off you go.",
+    hint_waking: "The machine is waking up …",
+    hint_loading: "Fetching the values from the machine …",
+    hint_defaults: "These are still factory values, yours are on their way.",
+    hint_busy: "The machine is busy right now.",
+    dispensing: "Your drink is on its way",
+    hint_pot: "The pot only works right at the machine.",
+    last_report: "Last heard {when}",
+    never: "nothing heard yet",
     recipe: "Drink",
     tab_favorites: "Favorites",
     tab_hot: "Hot",
@@ -34,12 +33,12 @@ const TEXT = {
     tab_custom: "Custom",
     profile: "Profile",
     adjust: "Adjust",
-    overridden: "changed for this brew only",
+    overridden: "just this once",
     tea_0: "White tea",
     tea_1: "Green tea",
     tea_2: "Oolong tea",
     tea_3: "Black tea",
-    maintenance: "Maintenance",
+    maintenance: "Care",
     grounds: "Grounds container",
     descale: "Descaling",
     filter: "Water filter",
@@ -48,11 +47,11 @@ const TEXT = {
     aborted: "Aborted",
     descales: "Descalings",
     water_total: "Water used in total",
-    settings: "Machine settings",
-    info: "Data",
+    settings: "Settings",
+    info: "Info",
     stats_updated: "Counters as of",
     firmware: "Wi-Fi module firmware",
-    alarms: "Needs attention",
+    alarms: "Needs a quick look",
     ed_mode: "Mode",
     ed_mode_full: "Everything",
     ed_mode_control: "Controls only",
@@ -77,7 +76,7 @@ const TEXT = {
     ed_tabs: "Tab pictures (URL with {tab})",
   },
   de: {
-    no_device: "Keine Cremalink-Kaffeemaschine gefunden. Sie wird mit der Integration cremalink-ha eingerichtet.",
+    no_device: "Keine Kaffeemaschine gefunden. Richte sie zuerst mit der Integration cremalink-ha ein.",
     brew: "Zubereiten",
     brewing: "Läuft …",
     starting: "Startet …",
@@ -85,16 +84,15 @@ const TEXT = {
     stopping: "Stoppt …",
     power_on: "Einschalten",
     power_off: "Ausschalten",
-    hint_standby: "Die Maschine ist im Standby. Zum Zubereiten erst einschalten.",
-    hint_waking: "Die Maschine wacht auf.",
-    hint_loading: "Die Rezeptwerte werden von der Maschine geladen …",
-    hint_defaults: "Es werden Werkswerte gezeigt – die Werte des Profils werden noch gelesen.",
-    hint_busy: "Die Maschine ist beschäftigt.",
-    dispensing: "Getränk wird ausgegeben",
-    hint_pot: "Die Kanne lässt sich nur an der Maschine selbst einstellen und starten.",
-    hint_unavailable: "Die Maschine nimmt gerade keine Zubereitung an.",
-    last_report: "Gemeldet {when}",
-    never: "noch keine Meldung",
+    hint_standby: "Die Maschine schläft. Weck sie auf, dann geht's los.",
+    hint_waking: "Die Maschine wacht gerade auf …",
+    hint_loading: "Hole die Werte von der Maschine …",
+    hint_defaults: "Das sind noch Werkswerte, deine kommen gleich.",
+    hint_busy: "Die Maschine ist gerade beschäftigt.",
+    dispensing: "Dein Getränk läuft",
+    hint_pot: "Die Kanne geht nur direkt an der Maschine.",
+    last_report: "Zuletzt gemeldet {when}",
+    never: "noch nichts gemeldet",
     recipe: "Getränk",
     tab_favorites: "Favoriten",
     tab_hot: "Heiß",
@@ -103,12 +101,12 @@ const TEXT = {
     tab_custom: "Eigene",
     profile: "Profil",
     adjust: "Anpassen",
-    overridden: "nur für diese Zubereitung geändert",
+    overridden: "nur für dieses Mal",
     tea_0: "Weißer Tee",
     tea_1: "Grüner Tee",
     tea_2: "Oolong Tee",
     tea_3: "Schwarzer Tee",
-    maintenance: "Wartung",
+    maintenance: "Pflege",
     grounds: "Satzbehälter",
     descale: "Entkalkung",
     filter: "Wasserfilter",
@@ -117,11 +115,11 @@ const TEXT = {
     aborted: "Abgebrochen",
     descales: "Entkalkungen",
     water_total: "Wasser gesamt",
-    settings: "Maschineneinstellungen",
-    info: "Daten",
+    settings: "Einstellungen",
+    info: "Infos",
     stats_updated: "Zählerstand von",
     firmware: "Firmware WLAN-Modul",
-    alarms: "Braucht Aufmerksamkeit",
+    alarms: "Bitte kurz kümmern",
     ed_mode: "Modus",
     ed_mode_full: "Alles",
     ed_mode_control: "Nur Bedienung",
@@ -523,7 +521,7 @@ class CremalinkCard extends HTMLElement {
     else if (pot) hint = "hint_pot";
     else if (recipe && recipe.state !== "unavailable" && !params.length && !running) hint = "hint_loading";
     else if (values === "default" && !running) hint = "hint_defaults";
-    else if (!brewAvailable) hint = "hint_unavailable";
+    else if (!brewAvailable) hint = "hint_busy";
     else if (!running && status && !IDLE.includes(status)) hint = "hint_busy";
     return {
       status,
@@ -1053,7 +1051,7 @@ class CremalinkCard extends HTMLElement {
     // The pressed button shows what is going on; saving and brewing can take ~30 s.
     const label = (brew, text) =>
       this._saving === (brew ? "brew" : "save")
-        ? this._spin(this._t(brew ? "sc_saving_brew" : "sc_saving"))
+        ? this._spin(this._t(brew ? "sc_saving_brew" : "saving"))
         : `<span>${this._t(text)}</span>`;
     return `<div class="savebar">
       <div class="actions">
@@ -1416,25 +1414,24 @@ Object.assign(TEXT.en, {
   admin_title: "Manage",
   fav_section: "Favorites",
   fav_profile: "Profile {name}",
-  fav_hint: "Drag to reorder. The first drink comes first on the machine.",
-  fav_empty: "No favorites yet. Add a drink below.",
+  fav_hint: "Drag the drinks into your order, the top one comes first on the machine.",
+  fav_empty: "No favorites yet. Add one below.",
   fav_add: "Add a drink …",
-  fav_save: "Save on machine",
-  fav_reset: "Discard changes",
-  fav_saving: "Saving …",
-  fav_max: "A profile can have at most 12 favorites.",
-  fav_asleep: "The machine is asleep. Wake it up to save.",
+  fav_save: "Send to the machine",
+  fav_reset: "Reset",
+  saving: "Saving …",
+  fav_max: "More than 12 favorites won't fit.",
+  asleep: "The machine is asleep. Wake it up for a moment.",
   fav_grip: "Drag to reorder",
   fav_up: "Move up",
   fav_down: "Move down",
   fav_remove: "Remove from favorites",
   sc_save: "Save in recipe",
-  sc_save_brew: "Save and brew",
+  sc_save_brew: "Save & go",
   sc_save_profile: "Save in profile",
-  sc_saving: "Saving …",
-  sc_saving_brew: "Saving, then brewing …",
+  sc_saving_brew: "Saving, then off it goes …",
   rec_deleting: "Deleting …",
-  rec_loading: "Reading the recipe …",
+  rec_loading: "Fetching the recipe …",
   rec_coffee: "Coffee",
   rec_milk: "Milk",
   rec_water: "Hot water",
@@ -1444,21 +1441,19 @@ Object.assign(TEXT.en, {
   rec_froth: "Froth",
   rec_milk_first: "Milk first",
   rec_water_ml: "Amount (ml)",
-  rec_need_ingredient: "Switch on at least one ingredient.",
+  rec_need_ingredient: "It needs at least one ingredient.",
   rec_icons_more: "More pictures of the machine",
   rec_section: "Custom recipes",
-  rec_hint: "Six places for your own drinks. Pick one to create or change it.",
+  rec_hint: "Six places for your own drinks. Tap one.",
   rec_slot: "Place {n}",
   rec_empty: "empty",
   rec_name: "Name (up to 10 characters)",
   rec_icon: "Picture on the machine",
   rec_save: "Only save",
-  rec_save_brew: "Save and brew",
   rec_delete: "Delete",
-  rec_delete_sure: "Really delete?",
+  rec_delete_sure: "Sure? Tap again.",
   rec_close: "Close",
-  rec_asleep: "The machine is asleep. Wake it up first.",
-  rec_need_name: "Give the recipe a name.",
+  rec_need_name: "Your recipe still needs a name.",
   ed_hide_custom: "Custom recipes",
   ed_name_admin: "Name",
   ed_device_id_admin: "Machine",
@@ -1467,25 +1462,24 @@ Object.assign(TEXT.de, {
   admin_title: "Verwalten",
   fav_section: "Favoriten",
   fav_profile: "Profil {name}",
-  fav_hint: "Zum Sortieren ziehen. Das erste Getränk steht an der Maschine vorn.",
-  fav_empty: "Noch keine Favoriten. Füge unten ein Getränk hinzu.",
+  fav_hint: "Zieh die Getränke in deine Reihenfolge, das oberste steht an der Maschine vorn.",
+  fav_empty: "Noch keine Favoriten. Füg unten eins hinzu.",
   fav_add: "Getränk hinzufügen …",
-  fav_save: "Auf der Maschine speichern",
-  fav_reset: "Änderungen verwerfen",
-  fav_saving: "Speichere …",
-  fav_max: "Ein Profil kann höchstens 12 Favoriten haben.",
-  fav_asleep: "Die Maschine schläft. Zum Speichern bitte aufwecken.",
+  fav_save: "Auf die Maschine schicken",
+  fav_reset: "Zurücksetzen",
+  saving: "Speichert …",
+  fav_max: "Mehr als 12 Favoriten passen nicht rein.",
+  asleep: "Die Maschine schläft. Weck sie kurz auf.",
   fav_grip: "Zum Sortieren ziehen",
   fav_up: "Nach oben",
   fav_down: "Nach unten",
   fav_remove: "Aus den Favoriten entfernen",
   sc_save: "Im Rezept speichern",
-  sc_save_brew: "Speichern und zubereiten",
+  sc_save_brew: "Speichern & los",
   sc_save_profile: "Im Profil speichern",
-  sc_saving: "Speichere …",
-  sc_saving_brew: "Speichere, dann Start …",
+  sc_saving_brew: "Speichert, dann geht's los …",
   rec_deleting: "Lösche …",
-  rec_loading: "Lese das Rezept …",
+  rec_loading: "Hole das Rezept …",
   rec_coffee: "Kaffee",
   rec_milk: "Milch",
   rec_water: "Heißwasser",
@@ -1495,21 +1489,19 @@ Object.assign(TEXT.de, {
   rec_froth: "Schaum",
   rec_milk_first: "Milch zuerst",
   rec_water_ml: "Menge (ml)",
-  rec_need_ingredient: "Schalte mindestens eine Zutat ein.",
+  rec_need_ingredient: "Eine Zutat braucht's mindestens.",
   rec_icons_more: "Weitere Bilder der Maschine",
   rec_section: "Eigene Rezepte",
-  rec_hint: "Sechs Plätze für eigene Getränke. Wähle einen, um ihn anzulegen oder zu ändern.",
+  rec_hint: "Sechs Plätze für deine eigenen Getränke. Tipp einen an.",
   rec_slot: "Platz {n}",
   rec_empty: "leer",
   rec_name: "Name (bis 10 Zeichen)",
   rec_icon: "Bild an der Maschine",
   rec_save: "Nur speichern",
-  rec_save_brew: "Speichern und zubereiten",
   rec_delete: "Löschen",
-  rec_delete_sure: "Wirklich löschen?",
+  rec_delete_sure: "Sicher? Nochmal tippen.",
   rec_close: "Schließen",
-  rec_asleep: "Die Maschine schläft. Bitte zuerst aufwecken.",
-  rec_need_name: "Gib dem Rezept einen Namen.",
+  rec_need_name: "Dein Rezept braucht noch einen Namen.",
   ed_hide_custom: "Eigene Rezepte",
   ed_name_admin: "Name",
   ed_device_id_admin: "Maschine",
@@ -1787,7 +1779,7 @@ class CremalinkAdminCard extends CremalinkCard {
   async _recSave(known, brew) {
     this._msgAt = "rec";
     const f = this._rForm;
-    if (!known.live) return this._error(new Error(this._t("rec_asleep")));
+    if (!known.live) return this._error(new Error(this._t("asleep")));
     if (!(f.name || "").trim()) return this._error(new Error(this._t("rec_need_name")));
     if (!f.coffeeOn && !f.milkOn && !f.waterOn) return this._error(new Error(this._t("rec_need_ingredient")));
     const data = {
@@ -1810,7 +1802,7 @@ class CremalinkAdminCard extends CremalinkCard {
 
   async _recDelete(known) {
     this._msgAt = "rec";
-    if (!known.live) return this._error(new Error(this._t("rec_asleep")));
+    if (!known.live) return this._error(new Error(this._t("asleep")));
     await this._recCall("delete_recipe", { device_id: this._found.deviceId, slot: this._rSlot }, "delete");
   }
 
@@ -1860,7 +1852,7 @@ class CremalinkAdminCard extends CremalinkCard {
       // the pressed button shows a spinner and what it is doing
       const recBtn = (act, cls, text) =>
         `<button class="btn ${cls} ${busy === act ? "working" : ""}" data-rec="${act}" aria-busy="${busy === act}" ${off}>${
-          busy === act ? this._spin(this._t(act === "delete" ? "rec_deleting" : act === "brew" ? "sc_saving_brew" : "fav_saving")) : text
+          busy === act ? this._spin(this._t(act === "delete" ? "rec_deleting" : act === "brew" ? "sc_saving_brew" : "saving")) : text
         }</button>`;
       form = `<div class="recform">
         <label>${this._t("rec_name")}<input type="text" maxlength="10" data-rec-field="name" value="${esc(f.name ?? "")}"></label>
@@ -1877,7 +1869,7 @@ class CremalinkAdminCard extends CremalinkCard {
         ${this._msgAt === "rec" ? this._msgHtml() : ""}
         <div class="actions">
           ${recBtn("save", "primary", this._t("rec_save"))}
-          ${recBtn("brew", "", this._t("rec_save_brew"))}
+          ${recBtn("brew", "", this._t("sc_save_brew"))}
           ${filled ? recBtn("delete", "danger", this._rDeleteArmed ? this._t("rec_delete_sure") : this._t("rec_delete")) : ""}
           <button class="btn" data-rec="close" ${off}>${this._t("rec_close")}</button>
         </div></div>`;
@@ -1972,14 +1964,14 @@ class CremalinkAdminCard extends CremalinkCard {
           <option value="">${this._t("fav_add")}</option>
           ${free.map((o) => `<option value="${esc(o)}">${esc(this._hass.formatEntityState(known.st, o))}</option>`).join("")}</select>`;
       const canSave = dirty && known.live && !this._saving;
-      const notes = [full ? this._t("fav_max") : "", !known.live ? this._t("fav_asleep") : ""].filter(Boolean).join(" ");
+      const notes = [full ? this._t("fav_max") : "", !known.live ? this._t("asleep") : ""].filter(Boolean).join(" ");
       const favInner = `<p class="hint">${this._t("fav_hint")}</p>
         ${draft.length ? `<ol class="favs">${rows}</ol>` : `<p class="note">${this._t("fav_empty")}</p>`}
         <div class="addrow">${add}</div>
         ${notes ? `<p class="note">${notes}</p>` : ""}
         ${this._msgAt === "fav" ? this._msgHtml() : ""}
         <div class="actions">
-          <button class="btn primary ${this._saving ? "working" : ""}" data-fav="save" aria-busy="${!!this._saving}" ${canSave ? "" : "disabled"}>${this._saving ? this._spin(this._t("fav_saving")) : this._t("fav_save")}</button>
+          <button class="btn primary ${this._saving ? "working" : ""}" data-fav="save" aria-busy="${!!this._saving}" ${canSave ? "" : "disabled"}>${this._saving ? this._spin(this._t("saving")) : this._t("fav_save")}</button>
           <button class="btn" data-fav="reset" ${dirty && !this._saving ? "" : "disabled"}>${this._t("fav_reset")}</button>
         </div>`;
       favorites = this._fold("toggle-fav", this._favOpen, this._t("fav_section"), favInner);
