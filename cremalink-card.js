@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.5.1";
+const CARD_VERSION = "0.5.2";
 
 const TEXT = {
   en: {
@@ -163,7 +163,7 @@ const EMPTY = ["unknown", "unavailable", "none", ""];
 const STANDBY = ["in_standby", "going_to_sleep", "sleeping", "deep_sleep"];
 const IDLE = ["ready"];
 // How long a pressed button waits for the machine before it gives up showing a spinner.
-const WAIT_MS = 15000;
+const WAIT_MS = 30000;
 
 // Machine status -> theme color variable
 function statusColor(s) {
@@ -540,40 +540,59 @@ class CremalinkCard extends HTMLElement {
 
   // ---- actions ----------------------------------------------------------
 
-  _call(domain, service, entity) {
-    if (!entity || this._busy.has(entity)) return;
+  // A pressed control waits for the machine: `release` ends the wait when the call
+  // fails or WAIT_MS have passed (_update ends it once the entity reports the change).
+  _waitFor(timer, release, domain, service, data) {
     this._message = "";
-    this._busy.add(entity);
-    this._busyFrom[entity] = this._hass.states[entity]?.state;
-    clearTimeout(this._timers[`busy:${entity}`]);
-    this._timers[`busy:${entity}`] = setTimeout(() => {
-      this._busy.delete(entity);
+    clearTimeout(this._timers[timer]);
+    this._timers[timer] = setTimeout(() => {
+      release();
       this._refresh();
     }, WAIT_MS);
-    this._hass.callService(domain, service, { entity_id: entity }).catch((err) => {
-      this._busy.delete(entity);
+    this._hass.callService(domain, service, data).catch((err) => {
+      release();
       this._error(err);
     });
     this._refresh();
   }
 
+  _call(domain, service, entity) {
+    if (!entity || this._busy.has(entity)) return;
+    this._busy.add(entity);
+    this._busyFrom[entity] = this._hass.states[entity]?.state;
+    this._waitFor(`busy:${entity}`, () => this._busy.delete(entity), domain, service, { entity_id: entity });
+  }
+
   // A select (drink, profile, setting): the pressed option shows a spinner until the
-  // machine reports it, the call fails or WAIT_MS have passed.
+  // machine reports it.
   _select(entity, option) {
     if (!entity || this._picking[entity] !== undefined) return;
     if (this._hass.states[entity]?.state === option) return;
-    this._message = "";
     this._picking[entity] = option;
-    clearTimeout(this._timers[`pick:${entity}`]);
-    this._timers[`pick:${entity}`] = setTimeout(() => {
-      delete this._picking[entity];
-      this._refresh();
-    }, WAIT_MS);
-    this._hass.callService("select", "select_option", { entity_id: entity, option }).catch((err) => {
-      delete this._picking[entity];
-      this._error(err);
+    this._waitFor(`pick:${entity}`, () => delete this._picking[entity], "select", "select_option", {
+      entity_id: entity,
+      option,
     });
+  }
+
+  // An action of the integration while `flag` shows its button as working; true on success.
+  async _action(flag, value, service, data) {
+    this[flag] = value;
     this._refresh();
+    try {
+      await this._hass.callService("cremalink_ha", service, data);
+      return true;
+    } catch (err) {
+      this._error(err);
+      return false;
+    } finally {
+      this[flag] = false;
+      this._refresh();
+    }
+  }
+
+  _setNumber(entity, value) {
+    this._hass.callService("number", "set_value", { entity_id: entity, value }).catch((err) => this._error(err));
   }
 
   // Spinner and text for a button that is waiting for the machine.
@@ -590,11 +609,7 @@ class CremalinkCard extends HTMLElement {
     const next = Math.min(Number(a.max), Math.max(Number(a.min), base + dir * step));
     this._pending[entity] = next;
     clearTimeout(this._timers[entity]);
-    this._timers[entity] = setTimeout(() => {
-      this._hass
-        .callService("number", "set_value", { entity_id: entity, value: next })
-        .catch((err) => this._error(err));
-    }, 400);
+    this._timers[entity] = setTimeout(() => this._setNumber(entity, next), 400);
     this._refresh();
   }
 
@@ -613,9 +628,7 @@ class CremalinkCard extends HTMLElement {
     const snapped = min + Math.round((n - min) / step) * step;
     const value = Math.min(Number(a.max), Math.max(min, snapped));
     this._pending[entity] = value;
-    this._hass
-      .callService("number", "set_value", { entity_id: entity, value })
-      .catch((err) => this._error(err));
+    this._setNumber(entity, value);
     this._refresh();
   }
 
@@ -1067,16 +1080,7 @@ class CremalinkCard extends HTMLElement {
         ...changes,
       };
     }
-    this._saving = brew ? "brew" : "save";
-    this._refresh();
-    try {
-      await this._hass.callService("cremalink_ha", service, data);
-    } catch (err) {
-      this._error(err);
-    } finally {
-      this._saving = false;
-      this._refresh();
-    }
+    await this._action("_saving", brew ? "brew" : "save", service, data);
   }
 
   _brew(f) {
@@ -1709,16 +1713,7 @@ class CremalinkAdminCard extends CremalinkCard {
     if (!known || this._saving) return;
     this._msgAt = "fav";
     const ids = this._draft.map((o) => known.ids[o]).filter((id) => Number.isInteger(id));
-    this._saving = true;
-    this._refresh();
-    try {
-      await this._hass.callService("cremalink_ha", "set_favorites", { device_id: this._found.deviceId, favorites: ids });
-    } catch (err) {
-      this._error(err);
-    } finally {
-      this._saving = false;
-      this._refresh();
-    }
+    await this._action("_saving", true, "set_favorites", { device_id: this._found.deviceId, favorites: ids });
   }
 
   // ---- custom recipes -----------------------------------------------------
@@ -1820,16 +1815,9 @@ class CremalinkAdminCard extends CremalinkCard {
   }
 
   async _recCall(service, data, which) {
-    this._rBusy = which || true;
-    this._refresh();
-    try {
-      await this._hass.callService("cremalink_ha", service, data);
+    if (await this._action("_rBusy", which || true, service, data)) {
       this._rSlot = null;
       this._rDeleteArmed = false;
-    } catch (err) {
-      this._error(err);
-    } finally {
-      this._rBusy = false;
       this._refresh();
     }
   }
