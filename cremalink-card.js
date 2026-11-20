@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.5.5";
+const CARD_VERSION = "0.5.6";
 
 const TEXT = {
   en: {
@@ -40,8 +40,8 @@ const TEXT = {
     tea_3: "Black tea",
     maintenance: "Care",
     grounds: "Grounds container",
-    descale: "Descaling",
-    filter: "Water filter",
+    descale: "Until descaling",
+    filter: "Water filter left",
     counters: "Counters",
     total: "Beverages total",
     aborted: "Aborted",
@@ -108,8 +108,8 @@ const TEXT = {
     tea_3: "Schwarzer Tee",
     maintenance: "Pflege",
     grounds: "Satzbehälter",
-    descale: "Entkalkung",
-    filter: "Wasserfilter",
+    descale: "Bis zum Entkalken",
+    filter: "Wasserfilter übrig",
     counters: "Zähler",
     total: "Getränke gesamt",
     aborted: "Abgebrochen",
@@ -1155,12 +1155,15 @@ class CremalinkCard extends HTMLElement {
     return `<div class="section-title">${this._t("profile")}</div><div class="seg" role="radiogroup">${buttons}</div>`;
   }
 
-  _bar(tk, label) {
+  // `left`: the bar shows what is left (descaling, filter), so it needs attention when low;
+  // otherwise it is a fill level (grounds container) that needs attention when high.
+  _bar(tk, label, left = false) {
     const st = this._state(tk);
     if (!st || EMPTY.includes(st.state)) return "";
     const n = Math.min(100, Math.max(0, Number(st.state)));
-    // a level, not an action: neutral, and the warning colour once it needs attention
-    const color = n >= 90 ? "var(--warning-color)" : "var(--secondary-text-color)";
+    // a level of the machine: accent colour, and the warning colour once it needs attention
+    const due = left ? n <= 10 : n >= 90;
+    const color = due ? "var(--warning-color)" : "var(--accent-color)";
     return `<div class="meter"><div class="m-head"><span>${label}</span><span>${Math.round(n)} %</span></div>
       <div class="bar"><div style="width:${n}%;background:${color}"></div></div></div>`;
   }
@@ -1175,8 +1178,8 @@ class CremalinkCard extends HTMLElement {
   _maintenance() {
     const bars =
       this._bar("stat_grounds_container_percentage", this._t("grounds")) +
-      this._bar("stat_descale_percentage", this._t("descale")) +
-      this._bar("stat_filter_percentage", this._t("filter"));
+      this._bar("stat_descale_remaining", this._t("descale"), true) +
+      this._bar("stat_filter_remaining", this._t("filter"), true);
     const counter = (tk, label) => {
       const st = this._state(tk);
       return st && !EMPTY.includes(st.state)
@@ -1408,13 +1411,34 @@ class CremalinkCard extends HTMLElement {
       <ha-card>${body}</ha-card>`;
     const list = this.shadowRoot.querySelector(".drinks");
     if (list && keepTop) list.scrollTop = keepTop;
-    if (this.style && typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => {
-        this.style.minHeight = "";
-      });
-    } else if (this.style) {
-      this.style.minHeight = "";
+    this._releaseHeight();
+  }
+
+  // Let go of the held height only once the new pictures have their size: a rebuilt <img>
+  // (e.g. the machine picture, whose height follows its width) is 0 px high until decoded,
+  // so releasing it a frame later made the card shrink and everything below it jump.
+  _releaseHeight() {
+    if (!this.style) return;
+    const token = (this._heightToken = (this._heightToken || 0) + 1);
+    const release = () => {
+      if (token === this._heightToken) this.style.minHeight = "";
+    };
+    // lazy drink pictures have a fixed size (and off-screen ones never load): no need to wait
+    const pending = [...this.shadowRoot.querySelectorAll("img")].filter(
+      (img) => !img.complete && img.loading !== "lazy"
+    );
+    if (!pending.length) {
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(release);
+      else release();
+      return;
     }
+    const loaded = pending.map(
+      (img) => new Promise((done) => {
+        img.addEventListener("load", done, { once: true });
+        img.addEventListener("error", done, { once: true });
+      })
+    );
+    Promise.race([Promise.all(loaded), new Promise((done) => setTimeout(done, 1000))]).then(release);
   }
 }
 
