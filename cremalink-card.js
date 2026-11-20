@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.5.6";
+const CARD_VERSION = "0.6.0";
 
 const TEXT = {
   en: {
@@ -56,6 +56,9 @@ const TEXT = {
     ed_mode_full: "Everything",
     ed_mode_control: "Controls only",
     ed_mode_status: "Status only",
+    ed_mode_row: "Row (like a tile)",
+    ed_tap_action: "Tap on the row",
+    ed_hold_action: "Hold on the row",
     ed_hide: "Hide sections",
     ed_hide_header: "Header",
     ed_hide_recipes: "Drinks",
@@ -124,6 +127,9 @@ const TEXT = {
     ed_mode_full: "Alles",
     ed_mode_control: "Nur Bedienung",
     ed_mode_status: "Nur Status",
+    ed_mode_row: "Zeile (wie eine Kachel)",
+    ed_tap_action: "Antippen der Zeile",
+    ed_hold_action: "Halten der Zeile",
     ed_hide: "Bereiche ausblenden",
     ed_hide_header: "Kopf",
     ed_hide_recipes: "Getränke",
@@ -160,6 +166,7 @@ function isColdSave(id) {
 const EMPTY = ["unknown", "unavailable", "none", ""];
 const STANDBY = ["in_standby", "going_to_sleep", "sleeping", "deep_sleep"];
 const IDLE = ["ready"];
+const MODES = ["full", "control", "status", "row"];
 // How long a pressed button waits for the machine before it gives up showing a spinner.
 const WAIT_MS = 30000;
 
@@ -283,6 +290,11 @@ class CremalinkCard extends HTMLElement {
         this._call("switch", "turn_on", entity);
       }
       if (act === "save-changes") this._saveChanges(el.dataset.brew === "1");
+      if (act === "row") {
+        if (this._held) this._held = false;
+        else this._rowAction("tap_action");
+        return;
+      }
       if (act === "stop") this._call("switch", "turn_off", entity);
       if (act === "power") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
       if (act === "toggle-switch") this._call("switch", el.dataset.on === "1" ? "turn_off" : "turn_on", entity);
@@ -345,7 +357,24 @@ class CremalinkCard extends HTMLElement {
     });
     this.shadowRoot.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && e.target.matches?.("input[data-act='type']")) e.target.blur();
+      if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("[data-act='row']")) {
+        e.preventDefault();
+        this._rowAction("tap_action");
+      }
     });
+    // Hold on the row (not on its button) runs hold_action, if one is set.
+    this.shadowRoot.addEventListener("pointerdown", (e) => {
+      if (!this._config?.hold_action || e.target.closest("button") || !e.target.closest("[data-act='row']")) return;
+      clearTimeout(this._holdTimer);
+      this._held = false;
+      this._holdTimer = setTimeout(() => {
+        this._held = true;
+        this._rowAction("hold_action");
+      }, 500);
+    });
+    for (const type of ["pointerup", "pointercancel"]) {
+      this.shadowRoot.addEventListener(type, () => clearTimeout(this._holdTimer));
+    }
   }
 
   // Visual editor: Home Assistant builds the form from this description.
@@ -357,7 +386,7 @@ class CremalinkCard extends HTMLElement {
           name: "mode",
           default: "full",
           required: true,
-          selector: { select: { mode: "dropdown", options: options(["full", "control", "status"], "ed_mode_") } },
+          selector: { select: { mode: "dropdown", options: options(["full", "control", "status", "row"], "ed_mode_") } },
         },
         {
           name: "hide",
@@ -373,6 +402,8 @@ class CremalinkCard extends HTMLElement {
         { name: "tab_labels", default: true, selector: { boolean: {} } },
         { name: "show_default_profiles", default: false, selector: { boolean: {} } },
         { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
+        { name: "tap_action", selector: { ui_action: {} } },
+        { name: "hold_action", selector: { ui_action: {} } },
         {
           type: "expandable",
           name: "images",
@@ -386,9 +417,7 @@ class CremalinkCard extends HTMLElement {
       ],
       computeLabel: (schema) => uiText(`ed_${schema.name}`),
       assertConfig: (config) => {
-        if (config.mode && !["full", "control", "status"].includes(config.mode)) {
-          throw new Error("mode must be full, control or status");
-        }
+        if (config.mode && !MODES.includes(config.mode)) throw new Error(`mode must be one of ${MODES.join(", ")}`);
         if (config.drinks) throw new Error("drinks can only be set in YAML");
       },
     };
@@ -399,18 +428,17 @@ class CremalinkCard extends HTMLElement {
   }
 
   getCardSize() {
-    return this._config?.mode === "status" ? 3 : 10;
+    const mode = this._config?.mode;
+    return mode === "row" ? 1 : mode === "status" ? 3 : 10;
   }
 
   getGridOptions() {
-    return { columns: 12, min_columns: 4 };
+    return this._config?.mode === "row" ? { rows: 1, columns: 12, min_columns: 6 } : { columns: 12, min_columns: 4 };
   }
 
   setConfig(config) {
     const mode = config.mode || "full";
-    if (!["full", "control", "status"].includes(mode)) {
-      throw new Error("mode must be full, control or status");
-    }
+    if (!MODES.includes(mode)) throw new Error(`mode must be one of ${MODES.join(", ")}`);
     this._config = { ...config, mode };
     this._found = null;
     this._sig = null;
@@ -594,9 +622,10 @@ class CremalinkCard extends HTMLElement {
   }
 
   // Every action goes through here: errors show next to the button (_error), so HA's
-  // own toast is switched off to avoid the same message twice.
+  // own toast is switched off to avoid the same message twice. The row has no room for
+  // a message, so there Home Assistant shows its toast instead.
   _service(domain, service, data) {
-    return this._hass.callService(domain, service, data, undefined, false);
+    return this._hass.callService(domain, service, data, undefined, this._config?.mode === "row");
   }
 
   // Spinner and text for a button that is waiting for the machine.
@@ -890,11 +919,10 @@ class CremalinkCard extends HTMLElement {
     return s.kind;
   }
 
-  _header(f) {
+  // What the header and the row show: name, picture, status line and progress.
+  _headInfo(f) {
     const hass = this._hass;
     const status = this._state("cremalink_status_name");
-    const power = this._state("power");
-    const report = this._state("cremalink_last_report");
     const name = this._config.name || this._found.deviceName || "Coffee machine";
     // Coffee and other drinks keep the status "ready" while they run: say what happens.
     // The integration's "drink phase" sensor says which step it is (grinding, dispensing ...).
@@ -906,30 +934,88 @@ class CremalinkCard extends HTMLElement {
     const visual = pic
       ? `<img class="pic" src="${pic}" alt="">`
       : `<ha-icon class="pic icon" icon="mdi:coffee-maker"></ha-icon>`;
-    const on = power && power.state === "on";
-    const powerBtn = power && power.state !== "unavailable"
-      ? `<button class="btn icon-only ${on ? "primary" : ""} ${this._busy.has(power.entity_id) ? "working" : ""}" data-act="power" data-entity="${power.entity_id}" data-on="${on ? 1 : 0}"
-           title="${this._t(on ? "power_off" : "power_on")}" aria-label="${this._t(on ? "power_off" : "power_on")}"
-           ${this._busy.has(power.entity_id) ? "disabled" : ""}>
-           <ha-icon icon="${this._busy.has(power.entity_id) ? "mdi:loading" : "mdi:power"}" class="${this._busy.has(power.entity_id) ? "spin" : ""}"></ha-icon></button>`
-      : "";
     const progress = this._state("cremalink_progress_percent");
-    const pct = progress && !EMPTY.includes(progress.state) ? Number(progress.state) : 0;
+    const pct = progress && !EMPTY.includes(progress.state) ? Math.min(100, Math.max(0, Number(progress.state))) : 0;
     const showBar = f.running || (pct > 0 && pct < 100 && !IDLE.includes(f.status) && !f.standby);
     // warm drinks orange, cold drinks blue (theme colours); unknown keeps the status colour
     const kind = this._runningKind(f);
-    const barColor = kind === "hot" ? "var(--warning-color, #ff9800)" : kind === "cold" ? "var(--info-color, #2196f3)" : color;
+    const barColor = kind === "hot" ? "var(--warning-color)" : kind === "cold" ? "var(--info-color)" : color;
+    const text = phaseText || (dispensing ? this._t("dispensing") : status ? hass.formatEntityState(status) : "");
+    return { name, visual, color, text, pct, showBar, barColor };
+  }
+
+  // A round icon button that waits for the machine like every other control.
+  _iconBtn(act, entity, icon, label, { cls = "", extra = "" } = {}) {
+    const busy = this._busy.has(entity);
+    return `<button class="btn icon-only ${cls} ${busy ? "working" : ""}" data-act="${act}" data-entity="${entity}" ${extra}
+      title="${label}" aria-label="${label}" aria-busy="${busy}" ${busy ? "disabled" : ""}>
+      <ha-icon icon="${busy ? "mdi:loading" : icon}" class="${busy ? "spin" : ""}"></ha-icon></button>`;
+  }
+
+  _powerBtn() {
+    const power = this._state("power");
+    if (!power || power.state === "unavailable") return "";
+    const on = power.state === "on";
+    return this._iconBtn("power", power.entity_id, "mdi:power", this._t(on ? "power_off" : "power_on"), {
+      cls: on ? "primary" : "",
+      extra: `data-on="${on ? 1 : 0}"`,
+    });
+  }
+
+  _header(f) {
+    const i = this._headInfo(f);
+    const report = this._state("cremalink_last_report");
     return `
       <div class="head">
-        <div class="visual">${visual}</div>
+        <div class="visual">${i.visual}</div>
         <div class="text">
-          <div class="name">${esc(name)}</div>
-          <div class="status" style="color:${color}">${phaseText || (dispensing ? this._t("dispensing") : status ? hass.formatEntityState(status) : "")}</div>
+          <div class="name">${esc(i.name)}</div>
+          <div class="status" style="color:${i.color}">${i.text}</div>
           ${report ? `<div class="sub">${this._t("last_report", { when: this._since(report.state) })}</div>` : ""}
         </div>
-        ${powerBtn}
-        ${showBar ? `<div class="bar"><div style="width:${Math.min(100, Math.max(0, pct))}%;background:${barColor}"></div></div>` : ""}
+        ${this._powerBtn()}
+        ${i.showBar ? `<div class="bar"><div style="width:${i.pct}%;background:${i.barColor}"></div></div>` : ""}
       </div>`;
+  }
+
+  // One line like a tile card, for a "running now" section: picture, name, status with a
+  // thin progress bar, and the one button that fits (stop while a drink runs, else power).
+  _row(f) {
+    const i = this._headInfo(f);
+    const brew = this._state("brew_recipe");
+    const button = f.running && brew
+      ? this._iconBtn("stop", brew.entity_id, "mdi:stop", this._t("stop"), { cls: "stop" })
+      : this._powerBtn();
+    const pct = i.showBar && i.pct > 0 ? ` · ${Math.round(i.pct)} %` : "";
+    return `
+      <div class="tile" data-act="row" role="button" tabindex="0" aria-label="${esc(i.name)}">
+        <div class="t-icon">${i.visual}</div>
+        <div class="t-text">
+          <div class="t-name">${esc(i.name)}</div>
+          <div class="t-state" style="color:${i.color}">${i.text}${pct}</div>
+          ${i.showBar ? `<div class="t-bar"><div style="width:${i.pct}%"></div></div>` : ""}
+        </div>
+        ${button}
+      </div>`;
+  }
+
+  // tap_action / hold_action of the row, in Home Assistant's action format.
+  _rowAction(which) {
+    const a = this._config[which] || (which === "tap_action" ? { action: "more-info" } : { action: "none" });
+    if (a.action === "more-info") {
+      const entityId = a.entity || this._config.entity || this._state("cremalink_status_name")?.entity_id;
+      if (entityId) fire(this, "hass-more-info", { entityId });
+    } else if (a.action === "navigate" && a.navigation_path) {
+      history.pushState(null, "", a.navigation_path);
+      fire(window, "location-changed", { replace: false });
+    } else if (a.action === "url" && a.url_path) {
+      window.open(a.url_path, "_blank", "noopener");
+    } else if (a.action === "perform-action" || a.action === "call-service") {
+      const [domain, service] = String(a.perform_action || a.service || "").split(".");
+      if (domain && service) {
+        this._service(domain, service, { ...(a.data || a.service_data || {}), ...(a.target || {}) }).catch((err) => this._error(err));
+      }
+    }
   }
 
   _alarms(f) {
@@ -1231,6 +1317,19 @@ class CremalinkCard extends HTMLElement {
     return `
         :host { display: block; container-type: inline-size; }
         ha-card { padding: 12px 14px; }
+        ha-card.row { padding: 6px 8px; }
+        .tile { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; border-radius: var(--ha-card-border-radius, 12px); }
+        .tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+        .t-icon { width: 40px; height: 40px; border-radius: 50%; flex: none; overflow: hidden; display: flex; align-items: center; justify-content: center;
+          background: color-mix(in srgb, var(--accent-color) 20%, transparent); color: var(--accent-color); --mdc-icon-size: 24px; }
+        .t-icon .pic { width: 100%; height: 100%; object-fit: cover; }
+        .t-icon ha-icon.pic { width: auto; height: auto; --mdc-icon-size: 24px; color: var(--accent-color); }
+        .t-text { flex: 1; min-width: 0; }
+        .t-name { font-size: 14px; font-weight: 500; line-height: 20px; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .t-state { font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .t-bar { margin-top: 3px; height: 3px; border-radius: 2px; background: var(--divider-color); overflow: hidden; }
+        .t-bar > div { height: 100%; background: var(--accent-color); }
+        .tile .btn.icon-only { border-radius: 50%; flex: none; }
         .head { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; column-gap: 14px; align-items: center;
           padding: 10px 12px; border-radius: var(--ha-card-border-radius, 12px); background: var(--secondary-background-color); }
         .text { display: flex; flex-direction: column; min-width: 0; }
@@ -1335,7 +1434,7 @@ class CremalinkCard extends HTMLElement {
         .btn ha-icon { --mdc-icon-size: 20px; }
         .btn.primary { background: var(--primary-color); border-color: var(--primary-color); color: var(--text-primary-color); }
         .btn.primary:hover { filter: brightness(1.08); }
-        .btn.stop { background: var(--error-color, #db4437); border-color: var(--error-color, #db4437); color: #fff; }
+        .btn.stop { background: var(--error-color); border-color: var(--error-color); color: var(--text-primary-color); }
         .btn.stop:hover { filter: brightness(1.08); }
         .btn.danger { color: var(--error-color); border-color: var(--error-color); }
         .btn.big { width: 100%; min-height: 48px; font-size: 16px; font-weight: 600; }
@@ -1379,6 +1478,10 @@ class CremalinkCard extends HTMLElement {
     const mode = this._config.mode;
     const hide = this._hide;
     const f = this._flags();
+    if (mode === "row") {
+      this._paint(this._row(f));
+      return;
+    }
     let body = "";
     if (!hide.includes("header")) body += this._header(f);
     if (!hide.includes("alarms")) body += this._alarms(f);
@@ -1401,6 +1504,10 @@ class CremalinkCard extends HTMLElement {
     }
     // without the brew column (status mode, standby) the message goes to the end
     if (mode === "status" || f.standby) body += this._msgHtml();
+    this._paint(body);
+  }
+
+  _paint(body) {
     // Keep the card's height and the drinks list's scroll position while the content is
     // rebuilt; otherwise Safari on iOS jumps the page to the card on every tap.
     const height = this.offsetHeight || 0;
@@ -1408,7 +1515,7 @@ class CremalinkCard extends HTMLElement {
     if (height && this.style) this.style.minHeight = `${height}px`;
     this.shadowRoot.innerHTML = `
       <style>${this._css()}</style>
-      <ha-card>${body}</ha-card>`;
+      <ha-card class="${this._config.mode === "row" ? "row" : ""}">${body}</ha-card>`;
     const list = this.shadowRoot.querySelector(".drinks");
     if (list && keepTop) list.scrollTop = keepTop;
     this._releaseHeight();
@@ -1571,6 +1678,10 @@ const CUSTOM_BASE = 229; // custom recipe places 1-6 are drinks 230-235
 // Switching an ingredient on starts at the minimum, like the app.
 const CUSTOM = { coffee: [20, 180], water: [50, 300], milk: [5, 108], taste: [0, 5], froth: [0, 2] };
 const APP_PICTURES = 20; // the app offers pictures 0-19; the machine shows 20-25 too
+
+function fire(node, type, detail) {
+  node.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
+}
 
 function esc(text) {
   return String(text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");

@@ -41,12 +41,14 @@ Add "Cremalink Coffee Machine" from the card picker and set it up in the visual 
 
 ```yaml
 type: custom:cremalink-card
-mode: full   # full | control | status
+mode: full   # full | control | status | row
 ```
 
 Set `device_id` only if you have more than one machine.
 
 **When the machine sleeps** the card shows only what is useful then: the header with status and power button, warnings, care and settings. Drinks, profile, sliders and the brew button come back once the machine is on. In the Machine Manager the custom recipes are hidden in standby as well (the machine cannot confirm a change then).
+
+**As a single row** (`mode: row`) the card is one line like a tile card, made for a "running now" section: picture, name, status with a thin progress bar while a drink runs, and one button (stop while brewing, otherwise power). Tapping the row opens the status details by default; set `tap_action` (e.g. `navigate` to a pop-up with the full card) and `hold_action` like on any tile card.
 
 The card adapts to the width it gets on the dashboard: on a wide card the drinks sit next to the sliders and the brew button, on a narrow one everything stacks and shrinks.
 
@@ -54,10 +56,12 @@ The card adapts to the width it gets on the dashboard: on a wide card the drinks
 
 | Option | Default | Description |
 |---|---|---|
-| `mode` | `full` | `full`, `control` (drinks, sliders, brew) or `status` (header, warnings, maintenance) |
+| `mode` | `full` | `full`, `control` (drinks, sliders, brew), `status` (header, warnings, maintenance) or `row` (one line like a tile card) |
 | `hide` | – | Sections to hide: `header`, `recipes`, `sliders`, `profile`, `alarms`, `maintenance` |
 | `name` | device name | Title in the header |
 | `device_id` | first machine | Device of the machine |
+| `tap_action` | `more-info` | `row` only: what tapping the row does (Home Assistant action: `more-info`, `navigate`, `url`, `perform-action`, `none`) |
+| `hold_action` | `none` | `row` only: what holding the row does |
 | `tab_labels` | `true` | Show the text under the tab icons; `false` shows the icons only |
 | `show_default_profiles` | `false` | Also show profiles that still have their factory name ("Explorer 2" …) |
 | `drinks` | all | YAML only: list of drink keys to show, e.g. `[espresso, cappuccino, tea]` |
