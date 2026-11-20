@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.5.0";
+const CARD_VERSION = "0.5.1";
 
 const TEXT = {
   en: {
@@ -162,6 +162,8 @@ function isColdSave(id) {
 const EMPTY = ["unknown", "unavailable", "none", ""];
 const STANDBY = ["in_standby", "going_to_sleep", "sleeping", "deep_sleep"];
 const IDLE = ["ready"];
+// How long a pressed button waits for the machine before it gives up showing a spinner.
+const WAIT_MS = 15000;
 
 // Machine status -> theme color variable
 function statusColor(s) {
@@ -258,6 +260,8 @@ class CremalinkCard extends HTMLElement {
     this._sig = null;
     this._lastStates = null;
     this._busy = new Set();
+    this._busyFrom = {}; // entity -> its state when the command was sent
+    this._picking = {}; // select entity -> option asked for, until the machine reports it
     this._pending = {};
     this._timers = {};
     this._message = "";
@@ -540,11 +544,12 @@ class CremalinkCard extends HTMLElement {
     if (!entity || this._busy.has(entity)) return;
     this._message = "";
     this._busy.add(entity);
-    clearTimeout(this._timers.busy);
-    this._timers.busy = setTimeout(() => {
-      this._busy.clear();
+    this._busyFrom[entity] = this._hass.states[entity]?.state;
+    clearTimeout(this._timers[`busy:${entity}`]);
+    this._timers[`busy:${entity}`] = setTimeout(() => {
+      this._busy.delete(entity);
       this._refresh();
-    }, 6000);
+    }, WAIT_MS);
     this._hass.callService(domain, service, { entity_id: entity }).catch((err) => {
       this._busy.delete(entity);
       this._error(err);
@@ -552,11 +557,28 @@ class CremalinkCard extends HTMLElement {
     this._refresh();
   }
 
+  // A select (drink, profile, setting): the pressed option shows a spinner until the
+  // machine reports it, the call fails or WAIT_MS have passed.
   _select(entity, option) {
-    if (!entity) return;
-    this._hass
-      .callService("select", "select_option", { entity_id: entity, option })
-      .catch((err) => this._error(err));
+    if (!entity || this._picking[entity] !== undefined) return;
+    if (this._hass.states[entity]?.state === option) return;
+    this._message = "";
+    this._picking[entity] = option;
+    clearTimeout(this._timers[`pick:${entity}`]);
+    this._timers[`pick:${entity}`] = setTimeout(() => {
+      delete this._picking[entity];
+      this._refresh();
+    }, WAIT_MS);
+    this._hass.callService("select", "select_option", { entity_id: entity, option }).catch((err) => {
+      delete this._picking[entity];
+      this._error(err);
+    });
+    this._refresh();
+  }
+
+  // Spinner and text for a button that is waiting for the machine.
+  _spin(text) {
+    return `<ha-icon icon="mdi:loading" class="spin"></ha-icon>${text ? `<span>${text}</span>` : ""}`;
   }
 
   _step(entity, dir) {
@@ -692,10 +714,13 @@ class CremalinkCard extends HTMLElement {
 
     const ids = [...Object.values(this._found.entities)];
     const states = ids.map((id) => `${hass.states[id]?.state}`).join("|");
-    if (states !== this._lastStates) {
-      // a state changed: commands that were waiting have gone through
-      this._busy.clear();
-      this._lastStates = states;
+    this._lastStates = states;
+    // a command has gone through once its own entity changed
+    for (const entity of [...this._busy]) {
+      if (hass.states[entity]?.state !== this._busyFrom[entity]) this._busy.delete(entity);
+    }
+    for (const [entity, option] of Object.entries(this._picking)) {
+      if (hass.states[entity]?.state === option) delete this._picking[entity];
     }
     for (const [entity, value] of Object.entries(this._pending)) {
       if (Number(hass.states[entity]?.state) === value) delete this._pending[entity];
@@ -708,6 +733,8 @@ class CremalinkCard extends HTMLElement {
       status ? hass.formatEntityState(status) : "",
       recipeAttrs.values_source,
       [...this._busy].join(","),
+      JSON.stringify(this._picking),
+      String(this._saving),
       JSON.stringify(this._pending),
       this._message,
       this._maintOpen,
@@ -795,13 +822,16 @@ class CremalinkCard extends HTMLElement {
   _dropdown(entity, enabled = true) {
     const st = this._hass.states[entity];
     if (!st) return "";
+    const asked = this._picking[entity];
     const options = (st.attributes.options || [])
-      .map(
-        (o) =>
-          `<option value="${esc(o)}" ${o === st.state ? "selected" : ""}>${esc(this._hass.formatEntityState(st, o))}</option>`
-      )
+      .map((o) => {
+        const sel = asked !== undefined ? o === asked : o === st.state;
+        return `<option value="${esc(o)}" ${sel ? "selected" : ""}>${esc(this._hass.formatEntityState(st, o))}</option>`;
+      })
       .join("");
-    return `<select data-act="select" data-entity="${entity}" aria-label="${this._label(st)}" ${enabled ? "" : "disabled"}>${options}</select>`;
+    const select = `<select data-act="select" data-entity="${entity}" aria-label="${this._label(st)}" aria-busy="${asked !== undefined}"
+      ${enabled && asked === undefined ? "" : "disabled"}>${options}</select>`;
+    return asked !== undefined ? `<span class="waiting"><ha-icon icon="mdi:loading" class="spin"></ha-icon>${select}</span>` : select;
   }
 
   // hot or cold: the drink currently selected in the recipe picker
@@ -847,7 +877,7 @@ class CremalinkCard extends HTMLElement {
       : `<ha-icon class="pic icon" icon="mdi:coffee-maker"></ha-icon>`;
     const on = power && power.state === "on";
     const powerBtn = power && power.state !== "unavailable"
-      ? `<button class="btn icon-only ${on ? "primary" : ""}" data-act="power" data-entity="${power.entity_id}" data-on="${on ? 1 : 0}"
+      ? `<button class="btn icon-only ${on ? "primary" : ""} ${this._busy.has(power.entity_id) ? "working" : ""}" data-act="power" data-entity="${power.entity_id}" data-on="${on ? 1 : 0}"
            title="${this._t(on ? "power_off" : "power_on")}" aria-label="${this._t(on ? "power_off" : "power_on")}"
            ${this._busy.has(power.entity_id) ? "disabled" : ""}>
            <ha-icon icon="${this._busy.has(power.entity_id) ? "mdi:loading" : "mdi:power"}" class="${this._busy.has(power.entity_id) ? "spin" : ""}"></ha-icon></button>`
@@ -906,7 +936,8 @@ class CremalinkCard extends HTMLElement {
     const all = known.options || [];
     const ids = known.ids || {};
     const icons = known.icons || {};
-    const locked = !live || f.running;
+    const picking = this._picking[st.entity_id];
+    const locked = !live || f.running || picking !== undefined;
     const wanted = Array.isArray(this._config.drinks) ? this._config.drinks : null;
     const options = all.filter((o) => (wanted ? wanted.includes(o) : true));
     // keep the machine's order inside each tab (the options come in menu order)
@@ -947,15 +978,18 @@ class CremalinkCard extends HTMLElement {
     }
     const tiles = shown
       .map((o) => {
-        const sel = live && o === st.state;
+        const asked = picking === o;
+        const sel = live && (asked || (picking === undefined && o === st.state));
         // a custom recipe is drawn like the drink its picture number stands for
         const key = SYMBOL_DRINK[icons[o]] || o;
         const picture = this._drinkPicture(key);
-        const visual = picture
-          ? `<img class="d-pic" src="${picture}" data-icon="${drinkIcon(key)}" alt="" loading="lazy">`
-          : `<ha-icon icon="${drinkIcon(key)}"></ha-icon>`;
-        return `<button class="drink ${sel ? "sel" : ""}" data-act="drink" data-entity="${st.entity_id}" data-value="${esc(o)}"
-            aria-pressed="${sel}" ${locked ? "disabled" : ""}>
+        const visual = asked
+          ? `<ha-icon icon="mdi:loading" class="spin"></ha-icon>`
+          : picture
+            ? `<img class="d-pic" src="${picture}" data-icon="${drinkIcon(key)}" alt="" loading="lazy">`
+            : `<ha-icon icon="${drinkIcon(key)}"></ha-icon>`;
+        return `<button class="drink ${sel ? "sel" : ""} ${asked ? "working" : ""}" data-act="drink" data-entity="${st.entity_id}" data-value="${esc(o)}"
+            aria-pressed="${sel}" aria-busy="${asked}" ${locked ? "disabled" : ""}>
             ${visual}<span class="d-name">${esc(this._hass.formatEntityState(st, o))}</span></button>`;
       })
       .join("");
@@ -999,13 +1033,19 @@ class CremalinkCard extends HTMLElement {
     const recipe = this._state("recipe");
     const id = Number(recipe?.attributes?.selected_beverage);
     if (!recipe || recipe.state === "unavailable" || !Number.isInteger(id) || f.pot) return "";
-    if (!Object.keys(this._savableChanges(f, id)).length) return "";
+    // While saving, the bar stays (the reloaded values may already match).
+    if (!this._saving && !Object.keys(this._savableChanges(f, id)).length) return "";
     const custom = id >= 230 && id <= 235;
     const off = f.running || !f.canBrew || this._saving ? "disabled" : "";
+    // The pressed button shows what is going on; saving and brewing can take ~30 s.
+    const label = (brew, text) =>
+      this._saving === (brew ? "brew" : "save")
+        ? this._spin(this._t(brew ? "sc_saving_brew" : "sc_saving"))
+        : `<span>${this._t(text)}</span>`;
     return `<div class="savebar">
       <div class="actions">
-        <button class="btn" data-act="save-changes" data-brew="0" ${off}>${this._t(custom ? "sc_save" : "sc_save_profile")}</button>
-        <button class="btn" data-act="save-changes" data-brew="1" ${off}>${this._t("sc_save_brew")}</button>
+        <button class="btn ${this._saving === "save" ? "working" : ""}" data-act="save-changes" data-brew="0" aria-busy="${this._saving === "save"}" ${off}>${label(false, custom ? "sc_save" : "sc_save_profile")}</button>
+        <button class="btn ${this._saving === "brew" ? "working" : ""}" data-act="save-changes" data-brew="1" aria-busy="${this._saving === "brew"}" ${off}>${label(true, "sc_save_brew")}</button>
       </div></div>`;
   }
 
@@ -1027,7 +1067,7 @@ class CremalinkCard extends HTMLElement {
         ...changes,
       };
     }
-    this._saving = true;
+    this._saving = brew ? "brew" : "save";
     this._refresh();
     try {
       await this._hass.callService("cremalink_ha", service, data);
@@ -1047,17 +1087,17 @@ class CremalinkCard extends HTMLElement {
       const label = busy ? this._t("stopping") : this._t("stop");
       return `
       <div class="brew">
-        <button class="btn big stop" data-act="stop" data-entity="${brew.entity_id}" ${busy ? "disabled" : ""}>
+        <button class="btn big stop ${busy ? "working" : ""}" data-act="stop" data-entity="${brew.entity_id}" aria-busy="${busy}" ${busy ? "disabled" : ""}>
           <ha-icon icon="${busy ? "mdi:loading" : "mdi:stop"}" class="${busy ? "spin" : ""}"></ha-icon><span>${label}</span></button>
       </div>`;
     }
     const label = busy ? this._t("starting") : this._t("brew");
     const icon = busy ? "mdi:loading" : "mdi:coffee";
     const spin = busy ? "spin" : "";
-    const enabled = f.canBrew && !busy;
+    const enabled = f.canBrew && !busy && !this._saving;
     return `
       <div class="brew">
-        <button class="btn primary big" data-act="brew" data-entity="${brew.entity_id}" ${enabled ? "" : "disabled"}>
+        <button class="btn primary big ${busy ? "working" : ""}" data-act="brew" data-entity="${brew.entity_id}" aria-busy="${busy}" ${enabled ? "" : "disabled"}>
           <ha-icon icon="${icon}" class="${spin}"></ha-icon><span>${label}</span></button>
         ${f.hint ? `<div class="hint center">${this._t(f.hint)}</div>` : ""}
       </div>`;
@@ -1077,12 +1117,15 @@ class CremalinkCard extends HTMLElement {
       (o, i) => showAll || o === known.state || !new RegExp(`^\\D+\\s*${i + 1}$`).test(String(o).trim())
     );
     if (!options.length) return "";
-    const brewing = !live || this._state("brew_recipe")?.state === "on";
+    const picking = this._picking[st.entity_id];
+    const brewing = !live || this._state("brew_recipe")?.state === "on" || picking !== undefined;
     const buttons = options
       .map((o) => {
-        const sel = o === known.state;
-        return `<button class="seg-btn ${sel ? "on" : ""}" role="radio" aria-checked="${sel}" data-act="pick"
-          data-entity="${st.entity_id}" data-value="${esc(o)}" ${brewing ? "disabled" : ""}>${esc(this._hass.formatEntityState(st, o))}</button>`;
+        const asked = picking === o;
+        const sel = asked || (picking === undefined && o === known.state);
+        const text = esc(this._hass.formatEntityState(st, o));
+        return `<button class="seg-btn ${sel ? "on" : ""} ${asked ? "working" : ""}" role="radio" aria-checked="${sel}" aria-busy="${asked}" data-act="pick"
+          data-entity="${st.entity_id}" data-value="${esc(o)}" ${brewing ? "disabled" : ""}>${asked ? this._spin(text) : text}</button>`;
       })
       .join("");
     return `<div class="section-title">${this._t("profile")}</div><div class="seg" role="radiogroup">${buttons}</div>`;
@@ -1131,9 +1174,11 @@ class CremalinkCard extends HTMLElement {
       const st = this._state(tk);
       if (!st || st.state === "unavailable") continue;
       const on = st.state === "on";
+      const busy = this._busy.has(st.entity_id);
       rows.push(`<div class="row"><div class="row-label">${this._label(st)}</div>
+        <span class="waiting">${busy ? `<ha-icon icon="mdi:loading" class="spin"></ha-icon>` : ""}
         <button class="switch ${on ? "on" : ""}" data-act="toggle-switch" data-entity="${st.entity_id}" data-on="${on ? 1 : 0}"
-          role="switch" aria-checked="${on}" aria-label="${this._label(st)}"><span></span></button></div>`);
+          role="switch" aria-checked="${on}" aria-busy="${busy}" aria-label="${this._label(st)}" ${busy ? "disabled" : ""}><span></span></button></span></div>`);
     }
     for (const tk of ["setting_temperature", "setting_auto_off", "setting_water_hardness"]) {
       const st = this._state(tk);
@@ -1269,6 +1314,9 @@ class CremalinkCard extends HTMLElement {
         .btn.big { width: 100%; min-height: 48px; font-size: 16px; font-weight: 600; }
         .brew { margin-top: 14px; }
         button[disabled], select[disabled] { opacity: .4; cursor: default; pointer-events: none; }
+        button.working[disabled], .drink.working[disabled], .slot.working:disabled { opacity: 1; }
+        .waiting { display: inline-flex; align-items: center; gap: 6px; }
+        .waiting ha-icon { --mdc-icon-size: 18px; color: var(--secondary-text-color); }
         button:focus-visible, select:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
         .spin { animation: spin 1s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -1379,6 +1427,9 @@ Object.assign(TEXT.en, {
   sc_save: "Save in recipe",
   sc_save_brew: "Save and brew",
   sc_save_profile: "Save in profile",
+  sc_saving: "Saving …",
+  sc_saving_brew: "Saving, then brewing …",
+  rec_deleting: "Deleting …",
   rec_loading: "Reading the recipe …",
   rec_coffee: "Coffee",
   rec_milk: "Milk",
@@ -1402,7 +1453,6 @@ Object.assign(TEXT.en, {
   rec_delete: "Delete",
   rec_delete_sure: "Really delete?",
   rec_close: "Close",
-  rec_working: "Working …",
   rec_asleep: "The machine is asleep. Wake it up first.",
   rec_need_name: "Give the recipe a name.",
   ed_hide_custom: "Custom recipes",
@@ -1428,6 +1478,9 @@ Object.assign(TEXT.de, {
   sc_save: "Im Rezept speichern",
   sc_save_brew: "Speichern und zubereiten",
   sc_save_profile: "Im Profil speichern",
+  sc_saving: "Speichere …",
+  sc_saving_brew: "Speichere, dann Start …",
+  rec_deleting: "Lösche …",
   rec_loading: "Lese das Rezept …",
   rec_coffee: "Kaffee",
   rec_milk: "Milch",
@@ -1451,7 +1504,6 @@ Object.assign(TEXT.de, {
   rec_delete: "Löschen",
   rec_delete_sure: "Wirklich löschen?",
   rec_close: "Schließen",
-  rec_working: "Arbeite …",
   rec_asleep: "Die Maschine schläft. Bitte zuerst aufwecken.",
   rec_need_name: "Gib dem Rezept einen Namen.",
   ed_hide_custom: "Eigene Rezepte",
@@ -1758,17 +1810,17 @@ class CremalinkAdminCard extends CremalinkCard {
       data.froth = Number(f.froth);
       data.milk_first = !!f.milkFirst;
     }
-    await this._recCall("save_recipe", data);
+    await this._recCall("save_recipe", data, brew ? "brew" : "save");
   }
 
   async _recDelete(known) {
     this._msgAt = "rec";
     if (!known.live) return this._error(new Error(this._t("rec_asleep")));
-    await this._recCall("delete_recipe", { device_id: this._found.deviceId, slot: this._rSlot });
+    await this._recCall("delete_recipe", { device_id: this._found.deviceId, slot: this._rSlot }, "delete");
   }
 
-  async _recCall(service, data) {
-    this._rBusy = true;
+  async _recCall(service, data, which) {
+    this._rBusy = which || true;
     this._refresh();
     try {
       await this._hass.callService("cremalink_ha", service, data);
@@ -1791,8 +1843,9 @@ class CremalinkAdminCard extends CremalinkCard {
       .map((n) => {
         const name = this._slotName(known, n);
         const on = this._rSlot === n;
-        return `<button class="slot ${on ? "sel" : ""}" data-rec="open" data-slot="${n}" aria-pressed="${on}" ${this._rBusy || this._rLoading ? "disabled" : ""}>
-          <span class="snum">${n}</span><span class="sname">${name ? esc(name) : `<i>${this._t("rec_empty")}</i>`}</span></button>`;
+        const loading = on && this._rLoading;
+        return `<button class="slot ${on ? "sel" : ""} ${loading ? "working" : ""}" data-rec="open" data-slot="${n}" aria-pressed="${on}" aria-busy="${loading}" ${this._rBusy || this._rLoading ? "disabled" : ""}>
+          ${loading ? `<ha-icon icon="mdi:loading" class="spin"></ha-icon>` : `<span class="snum">${n}</span>`}<span class="sname">${name ? esc(name) : `<i>${this._t("rec_empty")}</i>`}</span></button>`;
       })
       .join("");
     let form = "";
@@ -1816,6 +1869,11 @@ class CremalinkAdminCard extends CremalinkCard {
         ${f[key + "On"] ? `<div class="ingr-body">${body}</div>` : ""}</div>`;
       const busy = this._rBusy;
       const off = busy ? "disabled" : "";
+      // the pressed button shows a spinner and what it is doing
+      const recBtn = (act, cls, text) =>
+        `<button class="btn ${cls} ${busy === act ? "working" : ""}" data-rec="${act}" aria-busy="${busy === act}" ${off}>${
+          busy === act ? this._spin(this._t(act === "delete" ? "rec_deleting" : act === "brew" ? "sc_saving_brew" : "fav_saving")) : text
+        }</button>`;
       form = `<div class="recform">
         <label>${this._t("rec_name")}<input type="text" maxlength="10" data-rec-field="name" value="${esc(f.name ?? "")}"></label>
         <label>${this._t("rec_icon")}${icons}</label>
@@ -1830,9 +1888,9 @@ class CremalinkAdminCard extends CremalinkCard {
         ${ingredient("water", "rec_water", num("water", "rec_water_ml", CUSTOM.water))}
         ${this._msgAt === "rec" ? this._msgHtml() : ""}
         <div class="actions">
-          <button class="btn primary" data-rec="save" ${off}>${busy ? this._t("rec_working") : this._t("rec_save")}</button>
-          <button class="btn" data-rec="brew" ${off}>${this._t("rec_save_brew")}</button>
-          ${filled ? `<button class="btn danger" data-rec="delete" ${off}>${this._rDeleteArmed ? this._t("rec_delete_sure") : this._t("rec_delete")}</button>` : ""}
+          ${recBtn("save", "primary", this._t("rec_save"))}
+          ${recBtn("brew", "", this._t("rec_save_brew"))}
+          ${filled ? recBtn("delete", "danger", this._rDeleteArmed ? this._t("rec_delete_sure") : this._t("rec_delete")) : ""}
           <button class="btn" data-rec="close" ${off}>${this._t("rec_close")}</button>
         </div></div>`;
     }
@@ -1933,7 +1991,7 @@ class CremalinkAdminCard extends CremalinkCard {
         ${notes ? `<p class="note">${notes}</p>` : ""}
         ${this._msgAt === "fav" ? this._msgHtml() : ""}
         <div class="actions">
-          <button class="btn primary" data-fav="save" ${canSave ? "" : "disabled"}>${this._saving ? this._t("fav_saving") : this._t("fav_save")}</button>
+          <button class="btn primary ${this._saving ? "working" : ""}" data-fav="save" aria-busy="${!!this._saving}" ${canSave ? "" : "disabled"}>${this._saving ? this._spin(this._t("fav_saving")) : this._t("fav_save")}</button>
           <button class="btn" data-fav="reset" ${dirty && !this._saving ? "" : "disabled"}>${this._t("fav_reset")}</button>
         </div>`;
       favorites = this._fold("toggle-fav", this._favOpen, this._t("fav_section"), favInner);
