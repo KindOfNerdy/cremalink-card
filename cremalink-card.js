@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.6.1";
+const CARD_VERSION = "0.6.2";
 
 const TEXT = {
   en: {
@@ -941,8 +941,8 @@ class CremalinkCard extends HTMLElement {
     const kind = this._runningKind(f);
     const barColor = kind === "hot" ? "var(--warning-color)" : kind === "cold" ? "var(--info-color)" : color;
     const text = phaseText || (dispensing ? this._t("dispensing") : status ? hass.formatEntityState(status) : "");
-    // Busy (brewing, heating, rinsing ...) as opposed to asleep, off or simply ready.
-    const active = !f.standby && (dispensing || f.running || !(IDLE.includes(f.status) || EMPTY.includes(f.status ?? "")));
+    // Switched on (ready, heating, brewing ...) as opposed to asleep or unknown.
+    const active = !f.standby && !EMPTY.includes(f.status ?? "");
     return { name, visual, color, text, pct, showBar, barColor, active };
   }
 
@@ -994,7 +994,7 @@ class CremalinkCard extends HTMLElement {
         <div class="t-icon ${i.active ? "on" : ""}">${i.visual}</div>
         <div class="t-text">
           <div class="t-name">${esc(i.name)}</div>
-          <div class="t-state" style="color:${i.color}">${i.text}${pct}</div>
+          <div class="t-state">${i.text}${pct}</div>
           ${i.showBar ? `<div class="t-bar"><div style="width:${i.pct}%"></div></div>` : ""}
         </div>
         ${button}
@@ -1329,7 +1329,7 @@ class CremalinkCard extends HTMLElement {
         .t-icon ha-icon.pic { width: auto; height: auto; --mdc-icon-size: 24px; color: inherit; }
         .t-text { flex: 1; min-width: 0; }
         .t-name { font-size: 14px; font-weight: 500; line-height: 20px; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .t-state { font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .t-state { color: var(--secondary-text-color); font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .t-bar { margin-top: 3px; height: 3px; border-radius: 2px; background: var(--divider-color); overflow: hidden; }
         .t-bar > div { height: 100%; background: var(--accent-color); }
         .tile .btn.icon-only { border-radius: 50%; flex: none; }
