@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.6.0";
+const CARD_VERSION = "0.6.1";
 
 const TEXT = {
   en: {
@@ -941,7 +941,9 @@ class CremalinkCard extends HTMLElement {
     const kind = this._runningKind(f);
     const barColor = kind === "hot" ? "var(--warning-color)" : kind === "cold" ? "var(--info-color)" : color;
     const text = phaseText || (dispensing ? this._t("dispensing") : status ? hass.formatEntityState(status) : "");
-    return { name, visual, color, text, pct, showBar, barColor };
+    // Busy (brewing, heating, rinsing ...) as opposed to asleep, off or simply ready.
+    const active = !f.standby && (dispensing || f.running || !(IDLE.includes(f.status) || EMPTY.includes(f.status ?? "")));
+    return { name, visual, color, text, pct, showBar, barColor, active };
   }
 
   // A round icon button that waits for the machine like every other control.
@@ -989,7 +991,7 @@ class CremalinkCard extends HTMLElement {
     const pct = i.showBar && i.pct > 0 ? ` · ${Math.round(i.pct)} %` : "";
     return `
       <div class="tile" data-act="row" role="button" tabindex="0" aria-label="${esc(i.name)}">
-        <div class="t-icon">${i.visual}</div>
+        <div class="t-icon ${i.active ? "on" : ""}">${i.visual}</div>
         <div class="t-text">
           <div class="t-name">${esc(i.name)}</div>
           <div class="t-state" style="color:${i.color}">${i.text}${pct}</div>
@@ -1317,13 +1319,14 @@ class CremalinkCard extends HTMLElement {
     return `
         :host { display: block; container-type: inline-size; }
         ha-card { padding: 12px 14px; }
-        ha-card.row { padding: 6px 8px; }
-        .tile { display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; border-radius: var(--ha-card-border-radius, 12px); }
+        ha-card.tile-card { padding: 6px 8px; }
+        .tile { flex: 1; display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; border-radius: var(--ha-card-border-radius, 12px); }
         .tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
         .t-icon { width: 40px; height: 40px; border-radius: 50%; flex: none; overflow: hidden; display: flex; align-items: center; justify-content: center;
-          background: color-mix(in srgb, var(--accent-color) 20%, transparent); color: var(--accent-color); --mdc-icon-size: 24px; }
+          background: color-mix(in srgb, var(--disabled-color) 20%, transparent); color: var(--state-inactive-color); --mdc-icon-size: 24px; }
+        .t-icon.on { background: color-mix(in srgb, var(--accent-color) 20%, transparent); color: var(--accent-color); }
         .t-icon .pic { width: 100%; height: 100%; object-fit: cover; }
-        .t-icon ha-icon.pic { width: auto; height: auto; --mdc-icon-size: 24px; color: var(--accent-color); }
+        .t-icon ha-icon.pic { width: auto; height: auto; --mdc-icon-size: 24px; color: inherit; }
         .t-text { flex: 1; min-width: 0; }
         .t-name { font-size: 14px; font-weight: 500; line-height: 20px; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .t-state { font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1515,7 +1518,7 @@ class CremalinkCard extends HTMLElement {
     if (height && this.style) this.style.minHeight = `${height}px`;
     this.shadowRoot.innerHTML = `
       <style>${this._css()}</style>
-      <ha-card class="${this._config.mode === "row" ? "row" : ""}">${body}</ha-card>`;
+      <ha-card class="${this._config.mode === "row" ? "tile-card" : ""}">${body}</ha-card>`;
     const list = this.shadowRoot.querySelector(".drinks");
     if (list && keepTop) list.scrollTop = keepTop;
     this._releaseHeight();
