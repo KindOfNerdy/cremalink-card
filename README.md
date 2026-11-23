@@ -5,6 +5,14 @@ Lovelace cards for coffee machines set up with the [cremalink-ha](https://github
 > [!NOTE]
 > Early version. Developed with an Eletta Explore (ECAM452) over the cloud; other machines that cremalink-ha supports should show up too, but are untested.
 
+## Screenshots
+
+| English | Deutsch |
+|---|---|
+| ![Cremalink Coffee Machine](docs/images/full_en.png) | ![Cremalink Coffee Machine](docs/images/full_de.png) |
+| ![Row, warnings card and badges](docs/images/small_en.png) | ![Zeile, Warnungen und Badges](docs/images/small_de.png) |
+| ![Cremalink Machine Manager](docs/images/admin_en.png) | ![Cremalink Machine Manager](docs/images/admin_de.png) |
+
 ## Cremalink Coffee Machine: what it shows
 
 - **Header:** machine name, status, "last heard x min ago", progress while brewing and a power button.
