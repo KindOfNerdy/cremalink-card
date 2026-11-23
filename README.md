@@ -1,14 +1,14 @@
 # Cremalink Cards
 
-Two Lovelace cards for coffee machines set up with the [cremalink-ha](https://github.com/lodzen/cremalink-ha) integration: **Cremalink Coffee Machine** for everyday use (status, drink tiles, sliders with the machine's limits and a brew button) and **Cremalink Machine Manager** for the rarely needed things (favorites, your own recipes, machine settings, maintenance). Colors, fonts and texts follow your Home Assistant theme and language (English and German included). Unofficial; not affiliated with or endorsed by De'Longhi, product names are trademarks of their respective owners.
+Lovelace cards for coffee machines set up with the [cremalink-ha](https://github.com/lodzen/cremalink-ha) integration: **Cremalink Coffee Machine** for everyday use (status, drink tiles, sliders with the machine's limits and a brew button), **Cremalink Warnings** (just the warnings, also as a badge) and **Cremalink Machine Manager** for the rarely needed things (favorites, your own recipes, machine settings, maintenance). Colors, fonts and texts follow your Home Assistant theme and language (English and German included). Unofficial; not affiliated with or endorsed by De'Longhi, product names are trademarks of their respective owners.
 
 > [!NOTE]
 > Early version. Developed with an Eletta Explore (ECAM452) over the cloud; other machines that cremalink-ha supports should show up too, but are untested.
 
 ## Cremalink Coffee Machine: what it shows
 
-- **Header:** machine name, status, "reported x min ago", progress while brewing and a power button.
-- **Warnings:** only what needs attention (water tank, drip tray, beans, descaling, filter …).
+- **Header:** machine name, status, "last heard x min ago", progress while brewing and a power button.
+- **Warnings:** only what needs attention (water tank, grounds container, drip tray, beans, descaling, filter …); faults of the machine in red and first.
 - **Drinks:** tabs like the machine and the app have them: **Favorites** (of the active profile), **Hot**, **Cold**, **To go** (with a hot / cold choice below the tabs, as on the machine) and **Custom** (the recipes you named yourself), each with its own icon. One tile per drink, in the order of the machine's drink menu. A custom recipe is drawn like the drink whose picture you chose for it on the machine. Tap a tile to select it.
 - **Sliders:** one row for the selected drink (amount, strength, milk, temperature …) with the limits the machine allows. For tea the temperature steps are shown as tea types (white, green, oolong, black). A changed value is marked with a dot and only applies to the next brew; the stored recipe stays untouched.
 - **Brew:** one big button. It is disabled while the machine is asleep, busy or still loading the recipe values, and says why. The coffee pot and the cold brew pot can only be set and started on the machine (like in the Coffee Link app): they stay selectable, but have no sliders and no brew button.
@@ -18,6 +18,7 @@ Two Lovelace cards for coffee machines set up with the [cremalink-ha](https://gi
 
 - Home Assistant with the cremalink-ha integration (recipe sliders and the brew switch need a version with the recipe panel, `0.3.0b1` or newer).
 - The card finds the machine's entities itself. Entities the integration does not provide are left out.
+- Saving changed values, custom recipes and favorites need the integration's actions `save_drink`, `save_recipe`, `get_recipe`, `delete_recipe` and `set_favorites`. Without them these buttons show an error; everything else works.
 
 ## Installation
 
@@ -46,15 +47,13 @@ mode: full   # full | control | status | row | alerts
 
 Set `device_id` only if you have more than one machine.
 
-**When the machine sleeps** the card shows only what is useful then: the header with status and power button, warnings, care and settings. Drinks, profile, sliders and the brew button come back once the machine is on. In the Machine Manager the custom recipes are hidden in standby as well (the machine cannot confirm a change then).
+**When the machine sleeps** the card shows only what is useful then: the header with status and power button, warnings and care. Drinks, profile, sliders and the brew button come back once the machine is on. In the Machine Manager the custom recipes are hidden in standby as well (the machine cannot confirm a change then).
 
 **As a single row** (`mode: row`) the card is one line like a tile card, made for a "running now" section: picture, name, status with a thin progress bar while a drink runs, and one button (stop while brewing, otherwise power). Tapping the row opens the status details by default; set `tap_action` (e.g. `navigate` to a pop-up with the full card) and `hold_action` like on any tile card.
 
 **Warnings only** (the "Cremalink Warnings" card in the card picker, `type: custom:cremalink-alerts-card`, or `mode: alerts` of the main card) shows just the machine's warnings, one small line each ("Empty grounds container", "Empty drip tray" …). Tapping a line opens that warning's details by default; `tap_action` and `hold_action` work as for the row. While all is well it hides itself; set `show_ok: true` to keep it and see "All good" instead.
 
-**As a badge** for the top of a sections view, use `custom:cremalink-badge`: one warning by name, several as "2 warnings" (the full list shows on hover). Like the warnings tile it is hidden while all is well, unless `show_ok: true`; it takes `device_id`, `hide_alerts`, `tap_action` and `hold_action` too, and `show_name: true` puts the machine's name (or your own `name`) small above the warning like on Home Assistant's entity badges.
-
-Faults of the machine (e.g. a brew unit motor that does not work) are shown in the theme's error color and first, everyday chores (empty the grounds container, refill beans …) in its warning color.
+**As a badge** for the top of a sections view, use `custom:cremalink-badge`: one warning by name, several as "2 warnings" (the full list shows on hover). Like the warnings card it is hidden while all is well, unless `show_ok: true`; it takes `device_id`, `hide_alerts`, `tap_action` and `hold_action` too, and `show_name: true` puts the machine's name (or your own `name`) small above the warning like on Home Assistant's entity badges.
 
 ```yaml
 badges:
@@ -63,6 +62,8 @@ badges:
       action: navigate
       navigation_path: "#coffee"
 ```
+
+Faults of the machine (e.g. a brew unit motor that does not work) are shown in the theme's error color and first, everyday chores (empty the grounds container, refill beans …) in its warning color.
 
 The card adapts to the width it gets on the dashboard: on a wide card the drinks sit next to the sliders and the brew button, on a narrow one everything stacks and shrinks.
 
@@ -75,7 +76,7 @@ The card adapts to the width it gets on the dashboard: on a wide card the drinks
 | `name` | device name | Title in the header |
 | `device_id` | first machine | Device of the machine |
 | `tap_action` | `more-info` | `row` and `alerts` only: what tapping a line does (Home Assistant action: `more-info`, `navigate`, `url`, `perform-action`, `none`) |
-| `hold_action` | `none` | `row` and `alerts` only: what holding the line does |
+| `hold_action` | `none` | `row` and `alerts` only: what holding a line does |
 | `show_ok` | `false` | `alerts` only: stay visible without a warning and say "All good" |
 | `hide_alerts` | – | Warnings never to show (list of the machine's warning entities), in the warnings section, the warnings card and the badge |
 | `tabs` | all | Tabs to show, e.g. `[favorites, hot, custom]` (`favorites`, `hot`, `cold`, `togo`, `custom`); they keep the machine's order |
@@ -86,13 +87,15 @@ The card adapts to the width it gets on the dashboard: on a wide card the drinks
 | `images.tabs` | – | URL pattern for the tab pictures, `{tab}` is `favorites`, `hot`, `cold`, `togo` or `custom`, e.g. `/local/coffee/tab_{tab}.webp` |
 | `images.drinks` | – | URL pattern for drink pictures, `{drink}` is the drink key, e.g. `/local/coffee/{drink}.webp` |
 
+The tabs use the drink ids and the favorites from the integration where it provides them (`option_beverages` and `favorite_beverages` attributes of the recipe select) and the drink's name otherwise.
+
 ### Pictures
 
 Without pictures the tiles use icons. To use your own pictures, put them into your `www` folder (for example `config/www/coffee/espresso.webp`) and set `images.drinks: /local/coffee/{drink}.webp`. The file name is the drink key shown in the entity's options (a custom recipe uses the file of the drink it is shown as, e.g. `latte_macchiato`); drinks without a picture keep their icon (`espresso`, `cappuccino`, `flat_white` …).
 
-If you change values with the sliders, two buttons appear below them, like *save* in the Coffee Link app: *Save in profile* (standard drinks) or *Save in recipe* (your own recipes), and *Save and brew*. The brew button keeps brewing the changed values once, without saving. For cold and cold to-go drinks the machine keeps the coffee, milk and water amounts fixed, so only their other values can be saved. Needs the integration version with `cremalink_ha.save_drink`.
+### Saving changed values
 
-The tabs use the drink ids and the favorites from the integration where it provides them (`option_beverages` and `favorite_beverages` attributes of the recipe select) and the drink's name otherwise.
+If you change values with the sliders, two buttons appear below them, like *save* in the Coffee Link app: *Save in profile* (standard drinks) or *Save in recipe* (your own recipes), and *Save and brew*. The brew button keeps brewing the changed values once, without saving. For cold and cold to-go drinks the machine keeps the coffee, milk and water amounts fixed, so only their other values can be saved. Needs the `cremalink_ha.save_drink` action (see Requirements); `hide: [save]` leaves the buttons out.
 
 ## Cremalink Machine Manager
 
@@ -104,8 +107,8 @@ type: custom:cremalink-admin-card
 
 It holds four sections. Each one can be folded; they are open at first and the card remembers what you folded (per browser, separately from the Coffee Machine card):
 
-- **Favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. This needs the integration version with the `cremalink_ha.set_favorites` action and a machine that is awake.
-- **Custom recipes**: the machine's six places for your own drinks. Pick a place to create or change a recipe like in the Coffee Link app: name, the picture shown on the machine (the app's 20 pictures, plus the machine's further ones), and the ingredients coffee (with strength), milk (with froth and milk first) and hot water within the place's limits. The form opens with what the machine holds now. Then *Only save*, *Save and brew* or *Delete* (asks twice). Hidden while the machine is in standby. Needs the integration version with the `cremalink_ha.save_recipe`, `get_recipe` and `delete_recipe` actions.
+- **Favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. This needs the `cremalink_ha.set_favorites` action (see Requirements) and a machine that is awake.
+- **Custom recipes**: the machine's six places for your own drinks. Pick a place to create or change a recipe like in the Coffee Link app: name, the picture shown on the machine (the app's 20 pictures, plus the machine's further ones), and the ingredients coffee (with strength), milk (with froth and milk first) and hot water within the place's limits. The form opens with what the machine holds now. Then *Only save*, *Save and brew* or *Delete* (asks twice). Hidden while the machine is in standby. Needs the `cremalink_ha.save_recipe`, `get_recipe` and `delete_recipe` actions (see Requirements).
 - **Machine settings:** beep, energy saving, coffee temperature, auto-off, water hardness, plus when the counters were last updated and the Wi-Fi module firmware.
 - **Care:** the same bars and counters as in the Coffee Machine card.
 
