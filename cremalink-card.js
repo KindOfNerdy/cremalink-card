@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.8.0";
+const CARD_VERSION = "0.9.0";
 
 const TEXT = {
   en: {
@@ -83,6 +83,7 @@ const TEXT = {
     ed_hide_settings: "Machine settings",
     ed_name: "Title",
     ed_tab_labels: "Show the text on the tabs",
+    ed_drink_icons: "Simple icons instead of the drink pictures",
     ed_show_default_profiles: "Show profiles with factory names",
     ed_device_id: "Machine (only needed with more than one)",
     ed_images: "Pictures (optional)",
@@ -166,6 +167,7 @@ const TEXT = {
     ed_hide_settings: "Maschineneinstellungen",
     ed_name: "Titel",
     ed_tab_labels: "Text auf den Tabs zeigen",
+    ed_drink_icons: "Einfache Symbole statt der Getränkebilder",
     ed_show_default_profiles: "Profile mit Werksnamen zeigen",
     ed_device_id: "Maschine (nur bei mehreren nötig)",
     ed_images: "Bilder (optional)",
@@ -250,6 +252,147 @@ function drinkIcon(key) {
   if (/(cappuccino|latte|macchiato|flat_white|cortado)/.test(k)) return "mdi:coffee-to-go";
   if (/(espresso|doppio|ristretto)/.test(k)) return "mdi:coffee-outline";
   return "mdi:coffee";
+}
+
+// Built-in drink pictures, flat like Home Assistant's icons: the vessel takes the colour
+// of the icon it replaces (currentColor), the drink inside natural colours.
+// Natural colours of the drinks (the only fixed colours of the card).
+const DRINK_CSS = `
+  .dk-dv { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+  .dk-dt { fill: none; stroke: currentColor; stroke-width: 1.1; stroke-linecap: round; }
+  .dk-ds { fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; opacity: .45; }
+  .dk-dl { fill: currentColor; opacity: .14; }
+  .dk-dh { fill: none; stroke: #fff; stroke-width: 1.4; stroke-linecap: round; opacity: .45; }
+  .dk-esp { fill: #3b2116; } .dk-crema { fill: #b07a45; } .dk-cof { fill: #5e3620; } .dk-ame { fill: #7a4a2c; }
+  .dk-cb { fill: #2f1a10; } .dk-mix { fill: #b8875c; } .dk-milk { fill: #efe3d0; } .dk-choc { fill: #4a2617; }
+  .dk-foam { fill: #fbf6ec; stroke: #d8c7aa; stroke-width: .8; } .dk-cfoam { fill: #f4efe6; stroke: #d6cdbd; stroke-width: .8; }
+  .dk-water { fill: #9fd0ec; opacity: .55; } .dk-tea { fill: #c27c2c; }
+  .dk-ice { fill: #eaf6fd; stroke: #a9d2e8; stroke-width: .8; opacity: .95; }
+`;
+
+// Vessels in a 48 x 48 box: `inside` is the drink's outline (layers are clipped to it),
+// `top`/`bottom` its height, `draw` the vessel itself, `hot` adds steam, `glass` a highlight.
+const DRINK_VESSELS = {
+  espresso: { inside: "M15 24h18l-1.8 10a4 4 0 0 1-4 3.2h-6.4a4 4 0 0 1-4-3.2z", top: 24, bottom: 37.2, hot: [21, 27],
+    draw: `<path class="dk-dv" d="M15 24h18l-1.8 10a4 4 0 0 1-4 3.2h-6.4a4 4 0 0 1-4-3.2z"/><path class="dk-dv" d="M32.6 26.5h1.4a2.8 2.8 0 0 1 0 5.6h-2.2"/><path class="dk-dv" d="M11 40.5h26"/>` },
+  cup: { inside: "M9 20h28l-2.6 13.4a5 5 0 0 1-4.9 4.1h-13a5 5 0 0 1-4.9-4.1z", top: 20, bottom: 37.5, hot: [20, 26],
+    draw: `<path class="dk-dv" d="M9 20h28l-2.6 13.4a5 5 0 0 1-4.9 4.1h-13a5 5 0 0 1-4.9-4.1z"/><path class="dk-dv" d="M36.4 23h1.6a3.8 3.8 0 0 1 0 7.6h-2.9"/><path class="dk-dv" d="M6 41h33"/>` },
+  coffeecup: { inside: "M12 16h22l-1.6 18.5a4.5 4.5 0 0 1-4.5 4h-9.8a4.5 4.5 0 0 1-4.5-4z", top: 16, bottom: 38.5, hot: [20, 26],
+    draw: `<path class="dk-dv" d="M12 16h22l-1.6 18.5a4.5 4.5 0 0 1-4.5 4h-9.8a4.5 4.5 0 0 1-4.5-4z"/><path class="dk-dv" d="M33.6 20h1.6a3.8 3.8 0 0 1 0 7.6h-2.3"/><path class="dk-dv" d="M8 42h30"/>` },
+  mug: { inside: "M11 14h21v21.5a4.5 4.5 0 0 1-4.5 4.5h-12a4.5 4.5 0 0 1-4.5-4.5z", top: 14, bottom: 40, hot: [19, 25],
+    draw: `<path class="dk-dv" d="M11 14h21v21.5a4.5 4.5 0 0 1-4.5 4.5h-12a4.5 4.5 0 0 1-4.5-4.5z"/><path class="dk-dv" d="M32 18.5h3a4 4 0 0 1 4 4v3.5a4 4 0 0 1-4 4h-3"/>` },
+  teacup: { inside: "M10 22h26l-2 11a5.5 5.5 0 0 1-5.4 4.5h-11.2a5.5 5.5 0 0 1-5.4-4.5z", top: 22, bottom: 37.5, hot: [17, 23],
+    draw: `<path class="dk-dv" d="M10 22h26l-2 11a5.5 5.5 0 0 1-5.4 4.5h-11.2a5.5 5.5 0 0 1-5.4-4.5z"/><path class="dk-dv" d="M35.4 24.5h1.4a3.5 3.5 0 0 1 0 7h-2.6"/><path class="dk-dv" d="M7 41h32"/><path class="dk-dt" d="M29 25 L34 9"/><rect class="dk-dv" x="32.5" y="4.5" width="5" height="5.5" rx="1"/>` },
+  glass: { inside: "M16 6h16l-1.6 34.5a2 2 0 0 1-2 1.9h-8.8a2 2 0 0 1-2-1.9z", top: 6, bottom: 42.4, glass: true,
+    draw: `<path class="dk-dv" d="M16 6h16l-1.6 34.5a2 2 0 0 1-2 1.9h-8.8a2 2 0 0 1-2-1.9z"/>` },
+  small: { inside: "M14 18h20l-1.4 19a3 3 0 0 1-3 2.8h-11.2a3 3 0 0 1-3-2.8z", top: 18, bottom: 39.8, glass: true,
+    draw: `<path class="dk-dv" d="M14 18h20l-1.4 19a3 3 0 0 1-3 2.8h-11.2a3 3 0 0 1-3-2.8z"/>` },
+  tumbler: { inside: "M12 10h24l-2.4 29a3 3 0 0 1-3 2.8h-13.2a3 3 0 0 1-3-2.8z", top: 10, bottom: 41.8, glass: true,
+    draw: `<path class="dk-dv" d="M12 10h24l-2.4 29a3 3 0 0 1-3 2.8h-13.2a3 3 0 0 1-3-2.8z"/>` },
+  togo: { inside: "M14 15h20l-2 24.5a2.5 2.5 0 0 1-2.5 2.3h-11a2.5 2.5 0 0 1-2.5-2.3z", top: 15, bottom: 41.8, glass: true, hot: [21, 27], steamY: 9,
+    draw: `<path class="dk-dv" d="M14 15h20l-2 24.5a2.5 2.5 0 0 1-2.5 2.3h-11a2.5 2.5 0 0 1-2.5-2.3z"/><path class="dk-dv" d="M12.5 15h23v-2.2a2 2 0 0 0-2-2h-19a2 2 0 0 0-2 2z"/><path class="dk-dv" d="M17 10.8l1-2.3h12l1 2.3"/>` },
+  togoice: { inside: "M14 15h20l-2 24.5a2.5 2.5 0 0 1-2.5 2.3h-11a2.5 2.5 0 0 1-2.5-2.3z", top: 15, bottom: 41.8, glass: true,
+    draw: `<path class="dk-dv" d="M14 15h20l-2 24.5a2.5 2.5 0 0 1-2.5 2.3h-11a2.5 2.5 0 0 1-2.5-2.3z"/><path class="dk-dv" d="M12.5 15h23a11.5 6 0 0 0-23 0z"/><path class="dk-dv" d="M26 9.5 L29.5 3"/>` },
+  pot: { inside: "M13 15h18l3 22a4 4 0 0 1-4 4.5h-16a4 4 0 0 1-4-4.5z", top: 15, bottom: 41.5, glass: true,
+    draw: `<path class="dk-dv" d="M13 15h18l3 22a4 4 0 0 1-4 4.5h-16a4 4 0 0 1-4-4.5z"/><path class="dk-dv" d="M12 15h20v-3.5a2 2 0 0 0-2-2h-16a2 2 0 0 0-2 2z"/><path class="dk-dv" d="M32.5 18h2.5a3.5 3.5 0 0 1 3.5 3.5v6a3.5 3.5 0 0 1-3.5 3.5h-1.6"/><path class="dk-dv" d="M12 11.5l-3-2"/>` },
+  pitcher: { inside: "M14 16h20l-1.4 21a4 4 0 0 1-4 3.8h-9.2a4 4 0 0 1-4-3.8z", top: 16, bottom: 40.8, hot: [21, 27],
+    draw: `<path class="dk-dv" d="M14 16h20l-1.4 21a4 4 0 0 1-4 3.8h-9.2a4 4 0 0 1-4-3.8z"/><path class="dk-dv" d="M14 16l-3-3"/><path class="dk-dv" d="M33.6 19.5h1.4a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-2"/>` },
+};
+
+// Ice cubes for cold drinks (in the vessel's lower two thirds)
+const drinkIce = (v) => {
+  const y = DRINK_VESSELS[v].top + (DRINK_VESSELS[v].bottom - DRINK_VESSELS[v].top) * 0.3;
+  return `<rect class="dk-ice" x="17.5" y="${y}" width="5" height="5" rx="1.2" transform="rotate(-12 20 ${y + 2.5})"/>` +
+    `<rect class="dk-ice" x="25" y="${y + 4.5}" width="5" height="5" rx="1.2" transform="rotate(10 27.5 ${y + 7})"/>` +
+    `<rect class="dk-ice" x="19" y="${y + 9.5}" width="4.6" height="4.6" rx="1.2" transform="rotate(5 21.3 ${y + 11.8})"/>`;
+};
+
+// What each drink is made of, bottom to top (part of the vessel's height), from the
+// Eletta's recipes: coffee / milk / water, froth level and whether the milk goes first.
+const DRINK_ART = {
+  espresso: ["espresso", [["esp", 0.5], ["crema", 0.1]]],
+  double_espresso: ["espresso", [["esp", 0.68], ["crema", 0.1]]],
+  doppio_plus: ["small", [["esp", 0.62], ["crema", 0.08]], { hot: true }],
+  espresso_soul: ["espresso", [["esp", 0.5], ["crema", 0.12]]],
+  coffee: ["coffeecup", [["cof", 0.72], ["crema", 0.05]]],
+  long_coffee: ["coffeecup", [["cof", 0.8], ["crema", 0.04]]],
+  americano: ["mug", [["ame", 0.76], ["crema", 0.04]]],
+  espresso_macchiato: ["espresso", [["esp", 0.42], ["foam", 0.26]]],
+  cappuccino: ["cup", [["esp", 0.28], ["milk", 0.26], ["foam", 0.3]]],
+  cappuccino_plus: ["cup", [["esp", 0.4], ["milk", 0.16], ["foam", 0.26]]],
+  cappuccino_mix: ["cup", [["mix", 0.52], ["foam", 0.3]]],
+  flat_white: ["cup", [["mix", 0.66], ["foam", 0.12]]],
+  cortado: ["small", [["esp", 0.36], ["milk", 0.34], ["foam", 0.06]]],
+  latte_macchiato: ["glass", [["milk", 0.4], ["esp", 0.17], ["mix", 0.06], ["foam", 0.24]]],
+  caffe_latte: ["glass", [["mix", 0.72], ["foam", 0.1]]],
+  hot_milk: ["mug", [["milk", 0.56], ["foam", 0.22]]],
+  hot_water: ["mug", [["water", 0.76]]],
+  tea: ["teacup", [["tea", 0.66]]],
+  coffee_pot: ["pot", [["cof", 0.62]]],
+  steam: ["pitcher", [["milk", 0.42], ["foam", 0.3]]],
+  chocolate: ["cup", [["choc", 0.62], ["foam", 0.14]]],
+  brew_over_ice: ["tumbler", [["cof", 0.62]], { ice: true }],
+  iced_americano: ["tumbler", [["ame", 0.7]], { ice: true }],
+  iced_cappuccino: ["tumbler", [["esp", 0.46], ["cfoam", 0.28]], { ice: true }],
+  iced_latte_macchiato: ["tumbler", [["milk", 0.42], ["esp", 0.18], ["cfoam", 0.16]], { ice: true }],
+  iced_caffe_latte: ["tumbler", [["mix", 0.72]], { ice: true }],
+  iced_cappuccino_mix: ["tumbler", [["mix", 0.54], ["cfoam", 0.22]], { ice: true }],
+  iced_flat_white: ["tumbler", [["mix", 0.66], ["cfoam", 0.09]], { ice: true }],
+  iced_cold_milk: ["tumbler", [["milk", 0.54], ["cfoam", 0.22]], { ice: true }],
+  over_ice_espresso: ["small", [["esp", 0.52]], { ice: true }],
+  cold_brew: ["tumbler", [["cb", 0.66]], { ice: true }],
+  cold_brew_to_mix: ["small", [["cb", 0.56]]],
+  cold_brew_latte: ["tumbler", [["milk", 0.36], ["cb", 0.32]], { ice: true }],
+  cold_brew_cappuccino: ["tumbler", [["mix", 0.5], ["cfoam", 0.22]], { ice: true }],
+  cold_brew_pot: ["pot", [["cb", 0.62]]],
+  mug_americano: ["togo", [["ame", 0.78]]],
+  mug_cappuccino: ["togo", [["esp", 0.28], ["milk", 0.26], ["foam", 0.28]]],
+  mug_latte_macchiato: ["togo", [["milk", 0.4], ["esp", 0.18], ["foam", 0.24]]],
+  mug_caffe_latte: ["togo", [["mix", 0.72], ["foam", 0.1]]],
+  mug_cappuccino_mix: ["togo", [["mix", 0.52], ["foam", 0.3]]],
+  mug_flat_white: ["togo", [["mix", 0.66], ["foam", 0.12]]],
+  mug_hot_milk: ["togo", [["milk", 0.56], ["foam", 0.24]]],
+  mug_over_ice: ["togoice", [["cof", 0.7]], { ice: true }],
+  mug_iced_americano: ["togoice", [["ame", 0.72]], { ice: true }],
+  mug_iced_cappuccino: ["togoice", [["esp", 0.46], ["cfoam", 0.28]], { ice: true }],
+  mug_iced_latte_macchiato: ["togoice", [["milk", 0.42], ["esp", 0.18], ["cfoam", 0.16]], { ice: true }],
+  mug_iced_caffe_latte: ["togoice", [["mix", 0.72]], { ice: true }],
+  mug_iced_cappuccino_mix: ["togoice", [["mix", 0.54], ["cfoam", 0.22]], { ice: true }],
+  mug_iced_flat_white: ["togoice", [["mix", 0.66], ["cfoam", 0.09]], { ice: true }],
+  mug_iced_cold_milk: ["togoice", [["milk", 0.54], ["cfoam", 0.22]], { ice: true }],
+  cold_brew_mug: ["togoice", [["cb", 0.7]], { ice: true }],
+  cold_brew_latte_mug: ["togoice", [["milk", 0.36], ["cb", 0.32]], { ice: true }],
+  cold_brew_cappuccino_mug: ["togoice", [["mix", 0.5], ["cfoam", 0.22]], { ice: true }],
+};
+// Picture numbers of custom recipes that name drinks the machine has under another key
+const DRINK_ALIAS = { cold_milk: "iced_cold_milk", cold_coffee: "brew_over_ice", togo_cappuccino: "mug_cappuccino" };
+
+let drinkUid = 0;
+function drinkSvg(key) {
+  const art = DRINK_ART[DRINK_ALIAS[key] || key];
+  if (!art) return "";
+  const [vessel, layers, opt = {}] = art;
+  const v = DRINK_VESSELS[vessel];
+  const id = `cdk${drinkUid++}`;
+  const h = v.bottom - v.top;
+  let y = v.bottom;
+  let fill = "";
+  for (const [cls, part] of layers) {
+    const lh = h * part;
+    y -= lh;
+    fill += cls === "foam" || cls === "cfoam"
+      ? `<path class="dk-${cls}" d="M0 ${y + lh + 0.4} V${y + 1.6} Q24 ${y - 2.6} 48 ${y + 1.6} V${y + lh + 0.4} Z"/>`
+      : `<rect class="dk-${cls}" x="0" y="${y}" width="48" height="${lh + 0.4}"/>`;
+  }
+  if (opt.ice) fill += drinkIce(vessel);
+  if (v.glass) fill += `<path class="dk-dh" d="M${vessel === "glass" ? 19 : 17} ${v.top + 4} V${v.bottom - 6}"/>`;
+  const hot = (v.hot && !opt.ice && vessel !== "togoice") || opt.hot;
+  const [s1, s2] = v.hot || [21, 27];
+  const sy = v.steamY ?? v.top - 3;
+  const steam = hot && vessel !== "togo"
+    ? `<path class="dk-ds" d="M${s1} ${sy}c-1.6-1.8 1.6-2.8 0-4.8M${s2} ${sy}c-1.6-1.8 1.6-2.8 0-4.8"/>` : "";
+  return `<svg viewBox="0 0 48 48" aria-hidden="true"><defs><clipPath id="${id}"><path d="${v.inside}"/></clipPath></defs>` +
+    `${steam}<g clip-path="url(#${id})">${fill}</g>${v.draw}</svg>`;
 }
 
 // To go drinks are chosen hot or cold on the machine as well: 100-107 and 140-142 are cold.
@@ -376,11 +519,16 @@ class CremalinkCard extends HTMLElement {
       const el = e.target.closest("select[data-act='select']");
       if (el) this._select(el.dataset.entity, el.value);
     });
-    // A picture that does not load (no file for this drink) falls back to its icon.
+    // A picture that does not load (no file for this drink or tab) falls back to the
+    // built-in picture or the icon.
     this.shadowRoot.addEventListener(
       "error",
       (e) => {
         const img = e.target;
+        if (img?.matches?.("img[data-drink]")) {
+          img.outerHTML = this._drinkFallback(img.dataset.drink, img.className);
+          return;
+        }
         if (!img?.matches?.("img[data-icon]")) return;
         const icon = document.createElement("ha-icon");
         icon.setAttribute("icon", img.dataset.icon);
@@ -444,6 +592,7 @@ class CremalinkCard extends HTMLElement {
         { name: "name", selector: { text: {} } },
         { name: "tabs", selector: { select: { multiple: true, mode: "list", options: options(TABS, "tab_") } } },
         { name: "tab_labels", default: true, selector: { boolean: {} } },
+        { name: "drink_icons", default: false, selector: { boolean: {} } },
         { name: "show_default_profiles", default: false, selector: { boolean: {} } },
         { name: "show_ok", default: false, selector: { boolean: {} } },
         { name: "hide_alerts", selector: { entity: { multiple: true, filter: { integration: "cremalink_ha", domain: "binary_sensor" } } } },
@@ -1165,6 +1314,19 @@ class CremalinkCard extends HTMLElement {
     return pattern ? String(pattern).replace("{drink}", key) : null;
   }
 
+  // What a drink is shown with: your own picture (images.drinks), else the card's built-in
+  // picture, else (drink_icons: true, or a drink without one) its icon. `cls` sizes it.
+  _drinkVisual(key, cls) {
+    const picture = this._drinkPicture(key);
+    if (picture) return `<img class="${cls}" src="${picture}" data-drink="${esc(key)}" alt="" loading="lazy">`;
+    return this._drinkFallback(key, cls);
+  }
+
+  _drinkFallback(key, cls) {
+    const art = this._config.drink_icons ? "" : drinkSvg(key);
+    return art ? art.replace("<svg ", `<svg class="${cls}" `) : `<ha-icon class="${cls}" icon="${drinkIcon(key)}"></ha-icon>`;
+  }
+
   _recipes(f) {
     const st = this._state("recipe");
     if (!st) return "";
@@ -1224,12 +1386,7 @@ class CremalinkCard extends HTMLElement {
         const sel = live && (asked || (picking === undefined && o === st.state));
         // a custom recipe is drawn like the drink its picture number stands for
         const key = SYMBOL_DRINK[icons[o]] || o;
-        const picture = this._drinkPicture(key);
-        const visual = asked
-          ? `<ha-icon icon="mdi:loading" class="spin"></ha-icon>`
-          : picture
-            ? `<img class="d-pic" src="${picture}" data-icon="${drinkIcon(key)}" alt="" loading="lazy">`
-            : `<ha-icon icon="${drinkIcon(key)}"></ha-icon>`;
+        const visual = asked ? `<ha-icon icon="mdi:loading" class="spin"></ha-icon>` : this._drinkVisual(key, "d-pic");
         return `<button class="drink ${sel ? "sel" : ""} ${asked ? "working" : ""}" data-act="drink" data-entity="${st.entity_id}" data-value="${esc(o)}"
             aria-pressed="${sel}" aria-busy="${asked}" ${locked ? "disabled" : ""}>
             ${visual}<span class="d-name">${esc(this._hass.formatEntityState(st, o))}</span></button>`;
@@ -1544,6 +1701,10 @@ class CremalinkCard extends HTMLElement {
         .drink ha-icon { --mdc-icon-size: 26px; color: var(--secondary-text-color); }
         .drink.sel ha-icon { color: var(--primary-color); }
         .d-pic { width: 44px; height: 44px; object-fit: contain; }
+        .drink svg.d-pic { color: var(--secondary-text-color); }
+        .drink.sel svg.d-pic { color: var(--primary-color); }
+        .drink ha-icon.d-pic { width: auto; height: auto; }
+        ${DRINK_CSS}
         .d-name { font-size: 12px; line-height: 1.2; overflow-wrap: anywhere; display: -webkit-box;
           -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
         .drink:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
@@ -2027,8 +2188,10 @@ class CremalinkAdminCard extends CremalinkCard {
         },
         { name: "name", selector: { text: {} } },
         { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
+        { name: "drink_icons", default: false, selector: { boolean: {} } },
       ],
-      computeLabel: (schema) => (schema.name === "hide" ? uiText("ed_hide") : uiText(`ed_${schema.name}_admin`)),
+      computeLabel: (schema) =>
+        ["hide", "drink_icons"].includes(schema.name) ? uiText(`ed_${schema.name}`) : uiText(`ed_${schema.name}_admin`),
     };
   }
 
@@ -2353,10 +2516,7 @@ class CremalinkAdminCard extends CremalinkCard {
       const rows = draft
         .map((o, i) => {
           const key = SYMBOL_DRINK[known.icons[o]] || o;
-          const picture = this._drinkPicture(key);
-          const visual = picture
-            ? `<img class="pic" src="${picture}" alt="" loading="lazy">`
-            : `<ha-icon class="pic" icon="${drinkIcon(key)}"></ha-icon>`;
+          const visual = this._drinkVisual(key, "pic");
           const k = esc(o);
           return `<li class="fav" data-key="${k}">
             <button class="grip" data-grip aria-label="${this._t("fav_grip")}" title="${this._t("fav_grip")}"><ha-icon icon="mdi:drag"></ha-icon></button>
@@ -2410,6 +2570,8 @@ class CremalinkAdminCard extends CremalinkCard {
         .grip:hover, .ib:hover:not(:disabled) { background: var(--divider-color); }
         .num { width: 18px; text-align: right; font-size: 12px; color: var(--secondary-text-color); }
         .pic { width: 32px; height: 32px; object-fit: contain; --mdc-icon-size: 28px; flex: none; }
+        svg.pic { color: var(--secondary-text-color); }
+        ${DRINK_CSS}
         .fname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .ib { border: 0; background: transparent; color: var(--primary-text-color); cursor: pointer; width: 44px; height: 44px;
           border-radius: 8px; display: grid; place-items: center; padding: 0; }

@@ -17,7 +17,7 @@ Lovelace cards for coffee machines set up with the [cremalink-ha](https://github
 
 - **Header:** machine name, status, "last heard x min ago", progress while brewing and a power button.
 - **Warnings:** only what needs attention (water tank, grounds container, drip tray, beans, descaling, filter …); faults of the machine in red and first.
-- **Drinks:** tabs like the machine and the app have them: **Favorites** (of the active profile), **Hot**, **Cold**, **To go** (with a hot / cold choice below the tabs, as on the machine) and **Custom** (the recipes you named yourself), each with its own icon. One tile per drink, in the order of the machine's drink menu. A custom recipe is drawn like the drink whose picture you chose for it on the machine. Tap a tile to select it.
+- **Drinks:** tabs like the machine and the app have them: **Favorites** (of the active profile), **Hot**, **Cold**, **To go** (with a hot / cold choice below the tabs, as on the machine) and **Custom** (the recipes you named yourself), each with its own icon. One tile per drink, in the order of the machine's drink menu, each with a small picture of the drink in its glass or cup. A custom recipe is drawn like the drink whose picture you chose for it on the machine. Tap a tile to select it.
 - **Sliders:** one row for the selected drink (amount, strength, milk, temperature …) with the limits the machine allows. For tea the temperature steps are shown as tea types (white, green, oolong, black). A changed value is marked with a dot and only applies to the next brew; the stored recipe stays untouched.
 - **Brew:** one big button. It is disabled while the machine is asleep, busy or still loading the recipe values, and says why. The coffee pot and the cold brew pot can only be set and started on the machine (like in the Coffee Link app): they stay selectable, but have no sliders and no brew button.
 - **Profile:** buttons for the profiles you set up (profiles that still have their factory name are left out). Folded below: **Care** (grounds container as a fill level, what is left until descaling and of the water filter, as bars, plus beverages, descalings and water in total). The machine settings live in the Machine Manager card.
@@ -87,18 +87,34 @@ The card adapts to the width it gets on the dashboard: on a wide card the drinks
 | `show_ok` | `false` | `alerts` only: stay visible without a warning and say "All good" |
 | `hide_alerts` | – | Warnings never to show (list of the machine's warning entities), in the warnings section, the warnings card and the badge |
 | `tabs` | all | Tabs to show, e.g. `[favorites, hot, custom]` (`favorites`, `hot`, `cold`, `togo`, `custom`); they keep the machine's order |
+| `drink_icons` | `false` | Simple icons instead of the drink pictures (also in the Machine Manager) |
 | `tab_labels` | `true` | Show the text under the tab icons; `false` shows the icons only |
 | `show_default_profiles` | `false` | Also show profiles that still have their factory name ("Explorer 2" …) |
 | `drinks` | all | YAML only: list of drink keys to show, e.g. `[espresso, cappuccino, tea]` |
 | `images.device` | – | URL of a picture of your machine |
 | `images.tabs` | – | URL pattern for the tab pictures, `{tab}` is `favorites`, `hot`, `cold`, `togo` or `custom`, e.g. `/local/coffee/tab_{tab}.webp` |
-| `images.drinks` | – | URL pattern for drink pictures, `{drink}` is the drink key, e.g. `/local/coffee/{drink}.webp` |
+| `images.drinks` | – | Your own drink pictures: URL pattern, `{drink}` is the drink key, e.g. `/local/coffee/{drink}.webp` (see Pictures) |
 
 The tabs use the drink ids and the favorites from the integration where it provides them (`option_beverages` and `favorite_beverages` attributes of the recipe select) and the drink's name otherwise.
 
 ### Pictures
 
-Without pictures the tiles use icons. To use your own pictures, put them into your `www` folder (for example `config/www/coffee/espresso.webp`) and set `images.drinks: /local/coffee/{drink}.webp`. The file name is the drink key shown in the entity's options (a custom recipe uses the file of the drink it is shown as, e.g. `latte_macchiato`); drinks without a picture keep their icon (`espresso`, `cappuccino`, `flat_white` …).
+The drink tiles show the card's own pictures: each drink in its glass or cup with its typical layers (espresso, milk, foam, ice …). The vessel takes your theme's icon color (the primary color once selected), the drink inside natural colors, so they fit light and dark themes alike. `drink_icons: true` switches to simple icons.
+
+**Your own pictures** replace them drink by drink:
+
+1. Put one picture per drink into your `www` folder, e.g. `config/www/coffee/latte_macchiato.webp`. Square pictures with a transparent background, about 96 × 96 px, work best (PNG, WebP or SVG).
+2. Name each file after the drink key: the option of the machine's recipe select, as Home Assistant lists it in the entity's attributes (`espresso`, `latte_macchiato`, `mug_flat_white` …). A custom recipe uses the key of the drink its picture stands for (a recipe shown as a latte macchiato on the machine uses `latte_macchiato`).
+3. Point the card at the folder, with `{drink}` where the key goes:
+
+```yaml
+images:
+  drinks: /local/coffee/{drink}.webp
+  device: /local/coffee/machine.webp      # optional: your machine in the header
+  tabs: /local/coffee/tab_{tab}.webp      # optional: favorites, hot, cold, togo, custom
+```
+
+A drink without a file keeps the built-in picture, so you can replace just a few. Files in `www` are cached by the browser; after changing a picture, reload the page.
 
 ### Saving changed values
 
