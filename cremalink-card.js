@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.6.2";
+const CARD_VERSION = "0.6.3";
 
 const TEXT = {
   en: {
@@ -183,7 +183,14 @@ function statusColor(s) {
 const PARAMS = ["param_coffee", "param_water", "param_milk", "param_taste", "param_the_temp"];
 
 // Binary sensors shown as warnings when on (besides every alarm_*)
-const EXTRA_ALARMS = ["is_watertank_empty", "switch_water_tank_absent", "switch_water_level_low"];
+const EXTRA_ALARMS = [
+  "is_watertank_empty",
+  "switch_water_tank_absent",
+  "switch_water_level_low",
+  "is_waste_container_full",
+  "is_waste_container_missing",
+  "switch_door_opened",
+];
 
 // Custom recipes carry a picture number set on the machine. Like the Coffee Link app,
 // the number stands for one of the drinks (0 cappuccino, 1 espresso, 2 latte macchiato …);
@@ -1322,17 +1329,24 @@ class CremalinkCard extends HTMLElement {
         ha-card.tile-card { padding: 6px 8px; }
         .tile { flex: 1; display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; border-radius: var(--ha-card-border-radius, 12px); }
         .tile:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
-        .t-icon { width: 40px; height: 40px; border-radius: 50%; flex: none; overflow: hidden; display: flex; align-items: center; justify-content: center;
-          background: color-mix(in srgb, var(--disabled-color) 20%, transparent); color: var(--state-inactive-color); --mdc-icon-size: 24px; }
-        .t-icon.on { background: color-mix(in srgb, var(--accent-color) 20%, transparent); color: var(--accent-color); }
-        .t-icon .pic { width: 100%; height: 100%; object-fit: cover; }
+        /* like the room tiles around it: the icon stands free, the button is a rounded square */
+        .t-icon { width: 40px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center;
+          color: var(--state-inactive-color); --mdc-icon-size: 24px; }
+        .t-icon.on { color: var(--accent-color); }
+        .t-icon .pic { width: 32px; height: 32px; object-fit: contain; }
         .t-icon ha-icon.pic { width: auto; height: auto; --mdc-icon-size: 24px; color: inherit; }
         .t-text { flex: 1; min-width: 0; }
         .t-name { font-size: 14px; font-weight: 500; line-height: 20px; color: var(--primary-text-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .t-state { color: var(--secondary-text-color); font-size: 12px; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .t-bar { margin-top: 3px; height: 3px; border-radius: 2px; background: var(--divider-color); overflow: hidden; }
         .t-bar > div { height: 100%; background: var(--accent-color); }
-        .tile .btn.icon-only { border-radius: 50%; flex: none; }
+        .tile .btn.icon-only { width: 48px; height: 36px; flex: none; border: 0; border-radius: 12px; color: var(--primary-text-color);
+          background: color-mix(in srgb, var(--primary-text-color) 6%, transparent); }
+        /* on / stop: the theme's state colour, so it reads at a glance like an active switch next to it */
+        .tile .btn.icon-only.primary { color: var(--state-switch-active-color, var(--amber-color));
+          background: color-mix(in srgb, var(--state-switch-active-color, var(--amber-color)) 20%, transparent); }
+        .tile .btn.icon-only.stop { color: var(--error-color); background: color-mix(in srgb, var(--error-color) 20%, transparent); }
+        .tile .btn.icon-only:hover { filter: brightness(1.08); }
         .head { display: grid; grid-template-columns: 56px minmax(0, 1fr) auto; column-gap: 14px; align-items: center;
           padding: 10px 12px; border-radius: var(--ha-card-border-radius, 12px); background: var(--secondary-background-color); }
         .text { display: flex; flex-direction: column; min-width: 0; }
