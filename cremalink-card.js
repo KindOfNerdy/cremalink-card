@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.6.3";
+const CARD_VERSION = "0.7.0";
 
 const TEXT = {
   en: {
@@ -57,6 +57,13 @@ const TEXT = {
     ed_mode_control: "Controls only",
     ed_mode_status: "Status only",
     ed_mode_row: "Row (like a tile)",
+    ed_mode_alerts: "Warnings only (one line each)",
+    ed_show_ok: "Show when all is well (warnings only)",
+    alerts_ok: "All good",
+    alerts_n: "{n} warnings",
+    ed_alerts_show_ok: "Show when all is well",
+    ed_alerts_tap_action: "Tap",
+    ed_alerts_hold_action: "Hold",
     ed_tap_action: "Tap on the row",
     ed_hold_action: "Hold on the row",
     ed_hide: "Hide sections",
@@ -128,6 +135,13 @@ const TEXT = {
     ed_mode_control: "Nur Bedienung",
     ed_mode_status: "Nur Status",
     ed_mode_row: "Zeile (wie eine Kachel)",
+    ed_mode_alerts: "Nur Warnungen (je eine Zeile)",
+    ed_show_ok: "Auch ohne Warnung zeigen (nur Warnungen)",
+    alerts_ok: "Alles in Ordnung",
+    alerts_n: "{n} Warnungen",
+    ed_alerts_show_ok: "Auch ohne Warnung zeigen",
+    ed_alerts_tap_action: "Antippen",
+    ed_alerts_hold_action: "Halten",
     ed_tap_action: "Antippen der Zeile",
     ed_hold_action: "Halten der Zeile",
     ed_hide: "Bereiche ausblenden",
@@ -166,7 +180,9 @@ function isColdSave(id) {
 const EMPTY = ["unknown", "unavailable", "none", ""];
 const STANDBY = ["in_standby", "going_to_sleep", "sleeping", "deep_sleep"];
 const IDLE = ["ready"];
-const MODES = ["full", "control", "status", "row"];
+const MODES = ["full", "control", "status", "row", "alerts"];
+// Modes drawn as one tile-sized line
+const TILE_MODES = ["row", "alerts"];
 // How long a pressed button waits for the machine before it gives up showing a spinner.
 const WAIT_MS = 30000;
 
@@ -299,7 +315,7 @@ class CremalinkCard extends HTMLElement {
       if (act === "save-changes") this._saveChanges(el.dataset.brew === "1");
       if (act === "row") {
         if (this._held) this._held = false;
-        else this._rowAction("tap_action");
+        else this._rowAction("tap_action", entity);
         return;
       }
       if (act === "stop") this._call("switch", "turn_off", entity);
@@ -366,17 +382,18 @@ class CremalinkCard extends HTMLElement {
       if (e.key === "Enter" && e.target.matches?.("input[data-act='type']")) e.target.blur();
       if ((e.key === "Enter" || e.key === " ") && e.target.matches?.("[data-act='row']")) {
         e.preventDefault();
-        this._rowAction("tap_action");
+        this._rowAction("tap_action", e.target.dataset?.entity);
       }
     });
     // Hold on the row (not on its button) runs hold_action, if one is set.
     this.shadowRoot.addEventListener("pointerdown", (e) => {
-      if (!this._config?.hold_action || e.target.closest("button") || !e.target.closest("[data-act='row']")) return;
+      const line = e.target.closest("[data-act='row']");
+      if (!this._config?.hold_action || e.target.closest("button") || !line) return;
       clearTimeout(this._holdTimer);
       this._held = false;
       this._holdTimer = setTimeout(() => {
         this._held = true;
-        this._rowAction("hold_action");
+        this._rowAction("hold_action", line.dataset?.entity);
       }, 500);
     });
     for (const type of ["pointerup", "pointercancel"]) {
@@ -393,7 +410,7 @@ class CremalinkCard extends HTMLElement {
           name: "mode",
           default: "full",
           required: true,
-          selector: { select: { mode: "dropdown", options: options(["full", "control", "status", "row"], "ed_mode_") } },
+          selector: { select: { mode: "dropdown", options: options(MODES, "ed_mode_") } },
         },
         {
           name: "hide",
@@ -408,6 +425,7 @@ class CremalinkCard extends HTMLElement {
         { name: "name", selector: { text: {} } },
         { name: "tab_labels", default: true, selector: { boolean: {} } },
         { name: "show_default_profiles", default: false, selector: { boolean: {} } },
+        { name: "show_ok", default: false, selector: { boolean: {} } },
         { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
         { name: "tap_action", selector: { ui_action: {} } },
         { name: "hold_action", selector: { ui_action: {} } },
@@ -436,10 +454,12 @@ class CremalinkCard extends HTMLElement {
 
   getCardSize() {
     const mode = this._config?.mode;
+    if (mode === "alerts") return Math.max(1, this._lines || 1);
     return mode === "row" ? 1 : mode === "status" ? 3 : 10;
   }
 
   getGridOptions() {
+    if (this._config?.mode === "alerts") return { columns: 12, min_columns: 6 };
     return this._config?.mode === "row" ? { rows: 1, columns: 12, min_columns: 6 } : { columns: 12, min_columns: 4 };
   }
 
@@ -455,6 +475,27 @@ class CremalinkCard extends HTMLElement {
   set hass(hass) {
     this._hass = hass;
     this._update();
+  }
+
+  // Set by Home Assistant in the dashboard editor: the warnings tile and badge show up there.
+  set editMode(value) {
+    this._editMode = value;
+    this._sig = null;
+    if (this._hass && this._config) this._update();
+  }
+
+  get editMode() {
+    return this._editMode;
+  }
+
+  set preview(value) {
+    this._preview = value;
+    this._sig = null;
+    if (this._hass && this._config) this._update();
+  }
+
+  get preview() {
+    return this._preview;
   }
 
   connectedCallback() {
@@ -632,7 +673,7 @@ class CremalinkCard extends HTMLElement {
   // own toast is switched off to avoid the same message twice. The row has no room for
   // a message, so there Home Assistant shows its toast instead.
   _service(domain, service, data) {
-    return this._hass.callService(domain, service, data, undefined, this._config?.mode === "row");
+    return this._hass.callService(domain, service, data, undefined, TILE_MODES.includes(this._config?.mode));
   }
 
   // Spinner and text for a button that is waiting for the machine.
@@ -996,23 +1037,59 @@ class CremalinkCard extends HTMLElement {
       ? this._iconBtn("stop", brew.entity_id, "mdi:stop", this._t("stop"), { cls: "stop" })
       : this._powerBtn();
     const pct = i.showBar && i.pct > 0 ? ` · ${Math.round(i.pct)} %` : "";
+    return this._tile({
+      icon: i.visual,
+      iconCls: i.active ? "on" : "",
+      name: i.name,
+      text: `${i.text}${pct}`,
+      bar: i.showBar ? `<div class="t-bar"><div style="width:${i.pct}%"></div></div>` : "",
+      button,
+    });
+  }
+
+  // One line like a tile card; tapping it runs tap_action.
+  _tile({ icon, iconCls = "", name, text, bar = "", button = "" }) {
     return `
-      <div class="tile" data-act="row" role="button" tabindex="0" aria-label="${esc(i.name)}">
-        <div class="t-icon ${i.active ? "on" : ""}">${i.visual}</div>
+      <div class="tile" data-act="row" role="button" tabindex="0" aria-label="${esc(name)}">
+        <div class="t-icon ${iconCls}">${icon}</div>
         <div class="t-text">
-          <div class="t-name">${esc(i.name)}</div>
-          <div class="t-state">${i.text}${pct}</div>
-          ${i.showBar ? `<div class="t-bar"><div style="width:${i.pct}%"></div></div>` : ""}
+          <div class="t-name">${esc(name)}</div>
+          <div class="t-state">${text}</div>
+          ${bar}
         </div>
         ${button}
       </div>`;
   }
 
-  // tap_action / hold_action of the row, in Home Assistant's action format.
-  _rowAction(which) {
+  // Warnings only, as one tile line; without a warning it hides itself unless show_ok is set.
+  // Warnings only: one small line per warning, each opening its own warning by default.
+  _alertsTile(f) {
+    const active = this._activeAlarms(f);
+    const line = (icon, text, cls, entity = "") => `
+      <div class="a-line ${cls}" data-act="row" ${entity ? `data-entity="${entity}"` : ""} role="button" tabindex="0">
+        <ha-icon icon="${icon}"></ha-icon><span>${esc(text)}</span></div>`;
+    const lines = active.length
+      ? active.map((st) => line("mdi:alert-circle-outline", this._label(st), "warn", st.entity_id))
+      : [line("mdi:check-circle-outline", this._t("alerts_ok"), "ok")];
+    this._lines = lines.length;
+    return `<div class="a-list">${lines.join("")}</div>`;
+  }
+
+  // Hidden while there is nothing to show (tile and badge without a warning), but never in
+  // the dashboard editor, so it can still be set up there.
+  _showOnlyIf(visible) {
+    const hide = !visible && !this._config.show_ok && !this.editMode && !this.preview;
+    if (hide === this.hasAttribute("hidden")) return;
+    this.toggleAttribute("hidden", hide);
+    fire(this, "card-visibility-changed", { value: !hide });
+  }
+
+  // tap_action / hold_action of a line, in Home Assistant's action format; more-info opens the
+  // line's own entity (a warning) when it has one, else the machine's status.
+  _rowAction(which, lineEntity) {
     const a = this._config[which] || (which === "tap_action" ? { action: "more-info" } : { action: "none" });
     if (a.action === "more-info") {
-      const entityId = a.entity || this._config.entity || this._state("cremalink_status_name")?.entity_id;
+      const entityId = a.entity || this._config.entity || lineEntity || this._state("cremalink_status_name")?.entity_id;
       if (entityId) fire(this, "hass-more-info", { entityId });
     } else if (a.action === "navigate" && a.navigation_path) {
       history.pushState(null, "", a.navigation_path);
@@ -1027,12 +1104,17 @@ class CremalinkCard extends HTMLElement {
     }
   }
 
-  _alarms(f) {
-    const active = this._found.alarms
+  // States of the warnings that are on now.
+  _activeAlarms(f) {
+    return this._found.alarms
       // The milk-rinse reminder is set as the milk starts; only show it once the drink is done.
       .filter((id) => !(f?.running && this._tkOf(id) === "alarm_clean_knob"))
       .map((id) => this._hass.states[id])
       .filter((st) => st && st.state === "on");
+  }
+
+  _alarms(f) {
+    const active = this._activeAlarms(f);
     if (!active.length) return "";
     const chips = active
       .map((st) => `<span class="chip"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._label(st)}</span>`)
@@ -1325,6 +1407,7 @@ class CremalinkCard extends HTMLElement {
   _css() {
     return `
         :host { display: block; container-type: inline-size; }
+        :host([hidden]) { display: none; }
         ha-card { padding: 12px 14px; }
         ha-card.tile-card { padding: 6px 8px; }
         .tile { flex: 1; display: flex; align-items: center; gap: 10px; min-height: 44px; cursor: pointer; border-radius: var(--ha-card-border-radius, 12px); }
@@ -1333,6 +1416,15 @@ class CremalinkCard extends HTMLElement {
         .t-icon { width: 40px; height: 40px; flex: none; display: flex; align-items: center; justify-content: center;
           color: var(--state-inactive-color); --mdc-icon-size: 24px; }
         .t-icon.on { color: var(--accent-color); }
+        .a-list { display: flex; flex-direction: column; gap: 2px; }
+        .a-line { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 0 8px; cursor: pointer;
+          border-radius: calc(var(--ha-card-border-radius, 12px) - 4px); font-size: 14px; line-height: 20px; color: var(--primary-text-color); }
+        .a-line:hover { background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
+        .a-line:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
+        .a-line ha-icon { --mdc-icon-size: 20px; flex: none; color: var(--warning-color); }
+        .a-line.ok { color: var(--secondary-text-color); }
+        .a-line.ok ha-icon { color: var(--state-inactive-color); }
+        .a-line span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .t-icon .pic { width: 32px; height: 32px; object-fit: contain; }
         .t-icon ha-icon.pic { width: auto; height: auto; --mdc-icon-size: 24px; color: inherit; }
         .t-text { flex: 1; min-width: 0; }
@@ -1499,6 +1591,11 @@ class CremalinkCard extends HTMLElement {
       this._paint(this._row(f));
       return;
     }
+    if (mode === "alerts") {
+      this._showOnlyIf(this._activeAlarms(f).length > 0);
+      this._paint(this._alertsTile(f));
+      return;
+    }
     let body = "";
     if (!hide.includes("header")) body += this._header(f);
     if (!hide.includes("alarms")) body += this._alarms(f);
@@ -1532,7 +1629,7 @@ class CremalinkCard extends HTMLElement {
     if (height && this.style) this.style.minHeight = `${height}px`;
     this.shadowRoot.innerHTML = `
       <style>${this._css()}</style>
-      <ha-card class="${this._config.mode === "row" ? "tile-card" : ""}">${body}</ha-card>`;
+      <ha-card class="${TILE_MODES.includes(this._config.mode) ? "tile-card" : ""}">${body}</ha-card>`;
     const list = this.shadowRoot.querySelector(".drinks");
     if (list && keepTop) list.scrollTop = keepTop;
     this._releaseHeight();
@@ -1573,6 +1670,98 @@ window.customCards.push({
   type: "cremalink-card",
   name: "Cremalink Coffee Machine",
   description: "Everyday use: status, warnings, drinks, sliders and brew button for coffee machines set up with cremalink-ha.",
+});
+
+// ---- warnings card --------------------------------------------------------
+// The warnings tile (mode: alerts) as a card of its own in the card picker.
+
+// Editor of the warnings card and badge: only what they use.
+function alertsForm() {
+  return {
+    schema: [
+      { name: "show_ok", default: false, selector: { boolean: {} } },
+      { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
+      { name: "tap_action", selector: { ui_action: {} } },
+      { name: "hold_action", selector: { ui_action: {} } },
+    ],
+    computeLabel: (schema) =>
+      uiText(schema.name === "device_id" ? "ed_device_id" : `ed_alerts_${schema.name}`),
+  };
+}
+
+class CremalinkAlertsCard extends CremalinkCard {
+  static getConfigForm() {
+    return alertsForm();
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+
+  setConfig(config) {
+    super.setConfig({ ...config, mode: "alerts" });
+  }
+}
+
+customElements.define("cremalink-alerts-card", CremalinkAlertsCard);
+window.customCards.push({
+  type: "cremalink-alerts-card",
+  name: "Cremalink Warnings",
+  description: "Only the warnings of a coffee machine set up with cremalink-ha, one small line each; hidden while all is well.",
+  preview: true,
+});
+
+// ---- badge ----------------------------------------------------------------
+// The machine's warnings as a badge for the top of a sections view: the warning
+// (or how many there are), hidden while all is well unless show_ok is set.
+class CremalinkBadge extends CremalinkCard {
+  static getConfigForm() {
+    return alertsForm();
+  }
+
+  static getStubConfig() {
+    return {};
+  }
+
+  setConfig(config) {
+    super.setConfig({ ...config, mode: "alerts" });
+  }
+
+  _render() {
+    const active = this._activeAlarms(this._flags());
+    this._showOnlyIf(active.length > 0);
+    const labels = active.map((st) => this._label(st));
+    const text = !labels.length ? this._t("alerts_ok") : labels.length === 1 ? labels[0] : this._t("alerts_n", { n: labels.length });
+    const icon = labels.length ? "mdi:alert-circle-outline" : "mdi:check-circle-outline";
+    const title = labels.length ? labels.join(", ") : text;
+    this.shadowRoot.innerHTML = `
+      <style>
+        :host { display: block; }
+        :host([hidden]) { display: none; }
+        .badge { display: inline-flex; align-items: center; gap: 8px; box-sizing: border-box; height: var(--ha-badge-size, 36px);
+          min-width: var(--ha-badge-size, 36px); padding: 0 12px 0 8px; cursor: pointer; white-space: nowrap;
+          border-radius: var(--ha-badge-border-radius, calc(var(--ha-badge-size, 36px) / 2));
+          border: var(--ha-card-border-width, 1px) solid var(--ha-card-border-color, var(--divider-color));
+          background: var(--ha-card-background, var(--card-background-color)); box-shadow: var(--ha-card-box-shadow, none);
+          color: var(--primary-text-color); font-size: 12px; font-weight: 500; line-height: 16px; }
+        .badge:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+        .badge ha-icon { --mdc-icon-size: 18px; color: var(--state-inactive-color); }
+        .badge.warn ha-icon { color: var(--warning-color); }
+        .badge span { overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+      </style>
+      <div class="badge ${labels.length ? "warn" : ""}" data-act="row" role="button" tabindex="0" title="${esc(title)}" aria-label="${esc(title)}">
+        <ha-icon icon="${icon}"></ha-icon><span>${esc(text)}</span>
+      </div>`;
+  }
+}
+
+customElements.define("cremalink-badge", CremalinkBadge);
+window.customBadges = window.customBadges || [];
+window.customBadges.push({
+  type: "cremalink-badge",
+  name: "Cremalink Warnings",
+  description: "The warnings of a coffee machine set up with cremalink-ha, as a badge.",
+  preview: true,
 });
 
 // ---- admin card -----------------------------------------------------------
