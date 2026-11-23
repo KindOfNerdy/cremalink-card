@@ -18,7 +18,6 @@ Lovelace cards for coffee machines set up with the [cremalink-ha](https://github
 
 - Home Assistant with the cremalink-ha integration (recipe sliders and the brew switch need a version with the recipe panel, `0.3.0b1` or newer).
 - The card finds the machine's entities itself. Entities the integration does not provide are left out.
-- Saving changed values, custom recipes and favorites need the integration's actions `save_drink`, `save_recipe`, `get_recipe`, `delete_recipe` and `set_favorites`. Without them these buttons show an error; everything else works.
 
 ## Installation
 
@@ -95,7 +94,7 @@ Without pictures the tiles use icons. To use your own pictures, put them into yo
 
 ### Saving changed values
 
-If you change values with the sliders, two buttons appear below them, like *save* in the Coffee Link app: *Save in profile* (standard drinks) or *Save in recipe* (your own recipes), and *Save and brew*. The brew button keeps brewing the changed values once, without saving. For cold and cold to-go drinks the machine keeps the coffee, milk and water amounts fixed, so only their other values can be saved. Needs the `cremalink_ha.save_drink` action (see Requirements); `hide: [save]` leaves the buttons out.
+If you change values with the sliders, two buttons appear below them, like *save* in the Coffee Link app: *Save in profile* (standard drinks) or *Save in recipe* (your own recipes), and *Save and brew*. The brew button keeps brewing the changed values once, without saving. For cold and cold to-go drinks the machine keeps the coffee, milk and water amounts fixed, so only their other values can be saved. `hide: [save]` leaves the buttons out.
 
 ## Cremalink Machine Manager
 
@@ -107,8 +106,8 @@ type: custom:cremalink-admin-card
 
 It holds four sections. Each one can be folded; they are open at first and the card remembers what you folded (per browser, separately from the Coffee Machine card):
 
-- **Favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. This needs the `cremalink_ha.set_favorites` action (see Requirements) and a machine that is awake.
-- **Custom recipes**: the machine's six places for your own drinks. Pick a place to create or change a recipe like in the Coffee Link app: name, the picture shown on the machine (the app's 20 pictures, plus the machine's further ones), and the ingredients coffee (with strength), milk (with froth and milk first) and hot water within the place's limits. The form opens with what the machine holds now. Then *Only save*, *Save and brew* or *Delete* (asks twice). Hidden while the machine is in standby. Needs the `cremalink_ha.save_recipe`, `get_recipe` and `delete_recipe` actions (see Requirements).
+- **Favorites** of the active profile: drag the grip to reorder (the arrow buttons work too), remove drinks, add drinks from the list (at most 12), then *Save on machine*. This needs a machine that is awake.
+- **Custom recipes**: the machine's six places for your own drinks. Pick a place to create or change a recipe like in the Coffee Link app: name, the picture shown on the machine (the app's 20 pictures, plus the machine's further ones), and the ingredients coffee (with strength), milk (with froth and milk first) and hot water within the place's limits. The form opens with what the machine holds now. Then *Only save*, *Save and brew* or *Delete* (asks twice). Hidden while the machine is in standby.
 - **Machine settings:** beep, energy saving, coffee temperature, auto-off, water hardness, plus when the counters were last updated and the Wi-Fi module firmware.
 - **Care:** the same bars and counters as in the Coffee Machine card.
 
