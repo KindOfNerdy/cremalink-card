@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.7.0";
+const CARD_VERSION = "0.8.0";
 
 const TEXT = {
   en: {
@@ -58,10 +58,13 @@ const TEXT = {
     ed_mode_status: "Status only",
     ed_mode_row: "Row (like a tile)",
     ed_mode_alerts: "Warnings only (one line each)",
+    ed_hide_alerts: "Hide these warnings",
     ed_show_ok: "Show when all is well (warnings only)",
     alerts_ok: "All good",
     alerts_n: "{n} warnings",
     ed_alerts_show_ok: "Show when all is well",
+    ed_alerts_show_name: "Show the name",
+    ed_alerts_name: "Name (instead of the machine's)",
     ed_alerts_tap_action: "Tap",
     ed_alerts_hold_action: "Hold",
     ed_tap_action: "Tap on the row",
@@ -73,6 +76,8 @@ const TEXT = {
     ed_hide_profile: "Profile",
     ed_hide_alarms: "Warnings",
     ed_hide_maintenance: "Maintenance",
+    ed_hide_save: "Save buttons (changes only apply to the next brew)",
+    ed_show_tabs: "Tabs to show (none chosen: all)",
     ed_hide_title: "Title",
     ed_hide_favorites: "Favorites",
     ed_hide_settings: "Machine settings",
@@ -136,10 +141,13 @@ const TEXT = {
     ed_mode_status: "Nur Status",
     ed_mode_row: "Zeile (wie eine Kachel)",
     ed_mode_alerts: "Nur Warnungen (je eine Zeile)",
+    ed_hide_alerts: "Diese Warnungen ausblenden",
     ed_show_ok: "Auch ohne Warnung zeigen (nur Warnungen)",
     alerts_ok: "Alles in Ordnung",
     alerts_n: "{n} Warnungen",
     ed_alerts_show_ok: "Auch ohne Warnung zeigen",
+    ed_alerts_show_name: "Namen zeigen",
+    ed_alerts_name: "Name (statt dem der Maschine)",
     ed_alerts_tap_action: "Antippen",
     ed_alerts_hold_action: "Halten",
     ed_tap_action: "Antippen der Zeile",
@@ -151,6 +159,8 @@ const TEXT = {
     ed_hide_profile: "Profil",
     ed_hide_alarms: "Warnungen",
     ed_hide_maintenance: "Wartung",
+    ed_hide_save: "Speichern-Knöpfe (Änderungen gelten dann nur für den nächsten Bezug)",
+    ed_show_tabs: "Diese Tabs zeigen (keiner gewählt: alle)",
     ed_hide_title: "Titel",
     ed_hide_favorites: "Favoriten",
     ed_hide_settings: "Maschineneinstellungen",
@@ -206,6 +216,15 @@ const EXTRA_ALARMS = [
   "is_waste_container_full",
   "is_waste_container_missing",
   "switch_door_opened",
+];
+
+// Warnings that are a fault of the machine (shown in the theme's error colour), as opposed
+// to everyday chores like emptying the grounds container (warning colour).
+const FAULT_ALARMS = [
+  "alarm_machine_to_service", "alarm_heater_probe_failure", "alarm_infuser_motor_not_working",
+  "alarm_steamer_probe_failure", "alarm_hydraulic_circuit_problem", "alarm_expansion_comm_problem",
+  "alarm_expansion_submodules_problem", "alarm_grinding_unit_1_problem", "alarm_grinding_unit_2_problem",
+  "alarm_condense_fan_problem", "alarm_clock_bt_comm_problem", "alarm_spi_comm_problem",
 ];
 
 // Custom recipes carry a picture number set on the machine. Like the Coffee Link app,
@@ -418,14 +437,16 @@ class CremalinkCard extends HTMLElement {
             select: {
               multiple: true,
               mode: "list",
-              options: options(["header", "recipes", "sliders", "profile", "alarms", "maintenance"], "ed_hide_"),
+              options: options(["header", "recipes", "sliders", "save", "profile", "alarms", "maintenance"], "ed_hide_"),
             },
           },
         },
         { name: "name", selector: { text: {} } },
+        { name: "tabs", selector: { select: { multiple: true, mode: "list", options: options(TABS, "tab_") } } },
         { name: "tab_labels", default: true, selector: { boolean: {} } },
         { name: "show_default_profiles", default: false, selector: { boolean: {} } },
         { name: "show_ok", default: false, selector: { boolean: {} } },
+        { name: "hide_alerts", selector: { entity: { multiple: true, filter: { integration: "cremalink_ha", domain: "binary_sensor" } } } },
         { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
         { name: "tap_action", selector: { ui_action: {} } },
         { name: "hold_action", selector: { ui_action: {} } },
@@ -440,7 +461,8 @@ class CremalinkCard extends HTMLElement {
           ],
         },
       ],
-      computeLabel: (schema) => uiText(`ed_${schema.name}`),
+      // "tabs" is both the tabs to show (a list) and the tab pictures (a URL, under images)
+      computeLabel: (schema) => uiText(schema.name === "tabs" && schema.selector?.select ? "ed_show_tabs" : `ed_${schema.name}`),
       assertConfig: (config) => {
         if (config.mode && !MODES.includes(config.mode)) throw new Error(`mode must be one of ${MODES.join(", ")}`);
         if (config.drinks) throw new Error("drinks can only be set in YAML");
@@ -1069,7 +1091,7 @@ class CremalinkCard extends HTMLElement {
       <div class="a-line ${cls}" data-act="row" ${entity ? `data-entity="${entity}"` : ""} role="button" tabindex="0">
         <ha-icon icon="${icon}"></ha-icon><span>${esc(text)}</span></div>`;
     const lines = active.length
-      ? active.map((st) => line("mdi:alert-circle-outline", this._label(st), "warn", st.entity_id))
+      ? active.map((st) => line("mdi:alert-circle-outline", this._label(st), this._severity(st), st.entity_id))
       : [line("mdi:check-circle-outline", this._t("alerts_ok"), "ok")];
     this._lines = lines.length;
     return `<div class="a-list">${lines.join("")}</div>`;
@@ -1104,22 +1126,31 @@ class CremalinkCard extends HTMLElement {
     }
   }
 
-  // States of the warnings that are on now.
+  // "fault" for a fault of the machine, "warn" for a chore.
+  _severity(st) {
+    return FAULT_ALARMS.includes(this._tkOf(st.entity_id)) ? "fault" : "warn";
+  }
+
+  // States of the warnings that are on now, faults first.
   _activeAlarms(f) {
+    const hidden = Array.isArray(this._config.hide_alerts) ? this._config.hide_alerts : [];
     return this._found.alarms
+      .filter((id) => !hidden.includes(id))
       // The milk-rinse reminder is set as the milk starts; only show it once the drink is done.
       .filter((id) => !(f?.running && this._tkOf(id) === "alarm_clean_knob"))
       .map((id) => this._hass.states[id])
-      .filter((st) => st && st.state === "on");
+      .filter((st) => st && st.state === "on")
+      .sort((a, b) => (this._severity(a) === "fault" ? 0 : 1) - (this._severity(b) === "fault" ? 0 : 1));
   }
 
   _alarms(f) {
     const active = this._activeAlarms(f);
     if (!active.length) return "";
     const chips = active
-      .map((st) => `<span class="chip"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._label(st)}</span>`)
+      .map((st) => `<span class="chip ${this._severity(st)}"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._label(st)}</span>`)
       .join("");
-    return `<div class="alarms" role="status"><div class="alarms-title">${this._t("alarms")}</div><div class="chips">${chips}</div></div>`;
+    const fault = active.some((st) => this._severity(st) === "fault");
+    return `<div class="alarms ${fault ? "fault" : ""}" role="status"><div class="alarms-title">${this._t("alarms")}</div><div class="chips">${chips}</div></div>`;
   }
 
   _tabVisual(tab) {
@@ -1157,7 +1188,8 @@ class CremalinkCard extends HTMLElement {
     const byId = Object.fromEntries(options.filter((o) => Number.isInteger(ids[o])).map((o) => [ids[o], o]));
     groups.favorites = (known.favorites || []).map((id) => byId[id]).filter(Boolean);
     // to go: hot first, then cold, like the machine's display
-    const present = TABS.filter((t) => groups[t].length);
+    const allowed = Array.isArray(this._config.tabs) && this._config.tabs.length ? this._config.tabs : TABS;
+    const present = TABS.filter((t) => allowed.includes(t) && groups[t].length);
     if (!present.length) return "";
     const current = options.includes(known.state) ? tabOf(known.state, ids[known.state]) : null;
     const tab = this._tab && present.includes(this._tab) ? this._tab : present.includes(current) ? current : present[0];
@@ -1242,6 +1274,7 @@ class CremalinkCard extends HTMLElement {
   _saveBar(f) {
     const recipe = this._state("recipe");
     const id = Number(recipe?.attributes?.selected_beverage);
+    if (this._hide.includes("save")) return "";
     if (!recipe || recipe.state === "unavailable" || !Number.isInteger(id) || f.pot) return "";
     // While saving, the bar stays (the reloaded values may already match).
     if (!this._saving && !Object.keys(this._savableChanges(f, id)).length) return "";
@@ -1422,6 +1455,7 @@ class CremalinkCard extends HTMLElement {
         .a-line:hover { background: color-mix(in srgb, var(--primary-text-color) 4%, transparent); }
         .a-line:focus-visible { outline: 2px solid var(--primary-color); outline-offset: -2px; }
         .a-line ha-icon { --mdc-icon-size: 20px; flex: none; color: var(--warning-color); }
+        .a-line.fault ha-icon { color: var(--error-color); }
         .a-line.ok { color: var(--secondary-text-color); }
         .a-line.ok ha-icon { color: var(--state-inactive-color); }
         .a-line span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1456,6 +1490,8 @@ class CremalinkCard extends HTMLElement {
         .chips { display: flex; flex-wrap: wrap; gap: 6px; }
         .chip { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; color: var(--warning-color); }
         .chip ha-icon { --mdc-icon-size: 18px; }
+        .chip.fault { color: var(--error-color); }
+        .alarms.fault { border-color: var(--error-color); }
 
         .main { display: grid; grid-template-columns: minmax(0, 1fr); column-gap: 16px; }
         .col:empty { display: none; }
@@ -1676,16 +1712,20 @@ window.customCards.push({
 // The warnings tile (mode: alerts) as a card of its own in the card picker.
 
 // Editor of the warnings card and badge: only what they use.
-function alertsForm() {
+function alertsForm(badge = false) {
   return {
     schema: [
+      ...(badge
+        ? [{ name: "show_name", default: false, selector: { boolean: {} } }, { name: "name", selector: { text: {} } }]
+        : []),
       { name: "show_ok", default: false, selector: { boolean: {} } },
+      { name: "hide_alerts", selector: { entity: { multiple: true, filter: { integration: "cremalink_ha", domain: "binary_sensor" } } } },
       { name: "device_id", selector: { device: { filter: { integration: "cremalink_ha" } } } },
       { name: "tap_action", selector: { ui_action: {} } },
       { name: "hold_action", selector: { ui_action: {} } },
     ],
     computeLabel: (schema) =>
-      uiText(schema.name === "device_id" ? "ed_device_id" : `ed_alerts_${schema.name}`),
+      uiText(["device_id", "hide_alerts"].includes(schema.name) ? `ed_${schema.name}` : `ed_alerts_${schema.name}`),
   };
 }
 
@@ -1716,7 +1756,7 @@ window.customCards.push({
 // (or how many there are), hidden while all is well unless show_ok is set.
 class CremalinkBadge extends CremalinkCard {
   static getConfigForm() {
-    return alertsForm();
+    return alertsForm(true);
   }
 
   static getStubConfig() {
@@ -1733,6 +1773,9 @@ class CremalinkBadge extends CremalinkCard {
     const labels = active.map((st) => this._label(st));
     const text = !labels.length ? this._t("alerts_ok") : labels.length === 1 ? labels[0] : this._t("alerts_n", { n: labels.length });
     const icon = labels.length ? "mdi:alert-circle-outline" : "mdi:check-circle-outline";
+    const level = !labels.length ? "" : active.some((st) => this._severity(st) === "fault") ? "fault" : "warn";
+    // like the name on Home Assistant's entity badges: small, above the warning
+    const name = this._config.show_name ? this._config.name || this._found.deviceName || "" : "";
     const title = labels.length ? labels.join(", ") : text;
     this.shadowRoot.innerHTML = `
       <style>
@@ -1747,10 +1790,13 @@ class CremalinkBadge extends CremalinkCard {
         .badge:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
         .badge ha-icon { --mdc-icon-size: 18px; color: var(--state-inactive-color); }
         .badge.warn ha-icon { color: var(--warning-color); }
-        .badge span { overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+        .badge.fault ha-icon { color: var(--error-color); }
+        .info { display: flex; flex-direction: column; min-width: 0; }
+        .label { font-size: 10px; font-weight: 500; line-height: 10px; letter-spacing: 0.1px; color: var(--secondary-text-color); }
+        .info span { overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
       </style>
-      <div class="badge ${labels.length ? "warn" : ""}" data-act="row" role="button" tabindex="0" title="${esc(title)}" aria-label="${esc(title)}">
-        <ha-icon icon="${icon}"></ha-icon><span>${esc(text)}</span>
+      <div class="badge ${level}" data-act="row" role="button" tabindex="0" title="${esc(title)}" aria-label="${esc(title)}">
+        <ha-icon icon="${icon}"></ha-icon><div class="info">${name ? `<span class="label">${esc(name)}</span>` : ""}<span>${esc(text)}</span></div>
       </div>`;
   }
 }
