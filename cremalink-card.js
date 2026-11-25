@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.9.0";
+const CARD_VERSION = "0.9.1";
 
 const TEXT = {
   en: {
