@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.9.1";
+const CARD_VERSION = "0.9.2";
 
 const TEXT = {
   en: {
@@ -1077,12 +1077,12 @@ class CremalinkCard extends HTMLElement {
         values.sort((x, y) => x - y);
       }
       const options = values
-        .map((v) => `<option value="${v}" ${v === value ? "selected" : ""}>${this._fmt(v, unit, tk)}</option>`)
+        .map((v) => `<option value="${esc(v)}" ${v === value ? "selected" : ""}>${esc(this._fmt(v, unit, tk))}</option>`)
         .join("");
-      return `<select class="pick" data-act="value" data-entity="${entity}" aria-label="${label}" ${off}>${options}</select>`;
+      return `<select class="pick" data-act="value" data-entity="${esc(entity)}" aria-label="${esc(label)}" ${off}>${options}</select>`;
     }
-    return `<label class="val"><input data-act="type" data-entity="${entity}" type="text" inputmode="decimal"
-        value="${value}" aria-label="${label}" ${off}><span class="unit">${unit}</span></label>`;
+    return `<label class="val"><input data-act="type" data-entity="${esc(entity)}" type="text" inputmode="decimal"
+        value="${esc(value)}" aria-label="${esc(label)}" ${off}><span class="unit">${esc(unit)}</span></label>`;
   }
 
   _stepper(st) {
@@ -1092,9 +1092,9 @@ class CremalinkCard extends HTMLElement {
     const unit = st.attributes.unit_of_measurement || "";
     const off = "";
     return `<div class="stepper">
-      <button data-act="step" data-entity="${entity}" data-dir="-1" ${off} aria-label="-"><ha-icon icon="mdi:minus"></ha-icon></button>
+      <button data-act="step" data-entity="${esc(entity)}" data-dir="-1" ${off} aria-label="-"><ha-icon icon="mdi:minus"></ha-icon></button>
       ${this._valueField(entity, st, value, unit, off)}
-      <button data-act="step" data-entity="${entity}" data-dir="1" ${off} aria-label="+"><ha-icon icon="mdi:plus"></ha-icon></button>
+      <button data-act="step" data-entity="${esc(entity)}" data-dir="1" ${off} aria-label="+"><ha-icon icon="mdi:plus"></ha-icon></button>
     </div>`;
   }
 
@@ -1108,7 +1108,7 @@ class CremalinkCard extends HTMLElement {
         return `<option value="${esc(o)}" ${sel ? "selected" : ""}>${esc(this._hass.formatEntityState(st, o))}</option>`;
       })
       .join("");
-    const select = `<select data-act="select" data-entity="${entity}" aria-label="${this._label(st)}" aria-busy="${asked !== undefined}"
+    const select = `<select data-act="select" data-entity="${esc(entity)}" aria-label="${esc(this._label(st))}" aria-busy="${asked !== undefined}"
       ${enabled && asked === undefined ? "" : "disabled"}>${options}</select>`;
     return asked !== undefined ? `<span class="waiting"><ha-icon icon="mdi:loading" class="spin"></ha-icon>${select}</span>` : select;
   }
@@ -1151,7 +1151,7 @@ class CremalinkCard extends HTMLElement {
     const color = statusColor(dispensing ? "dispensing" : f.status);
     const pic = this._config.images?.device;
     const visual = pic
-      ? `<img class="pic" src="${pic}" alt="">`
+      ? `<img class="pic" src="${esc(pic)}" alt="">`
       : `<ha-icon class="pic icon" icon="mdi:coffee-maker"></ha-icon>`;
     const progress = this._state("cremalink_progress_percent");
     const pct = progress && !EMPTY.includes(progress.state) ? Math.min(100, Math.max(0, Number(progress.state))) : 0;
@@ -1168,9 +1168,9 @@ class CremalinkCard extends HTMLElement {
   // A round icon button that waits for the machine like every other control.
   _iconBtn(act, entity, icon, label, { cls = "", extra = "" } = {}) {
     const busy = this._busy.has(entity);
-    return `<button class="btn icon-only ${cls} ${busy ? "working" : ""}" data-act="${act}" data-entity="${entity}" ${extra}
-      title="${label}" aria-label="${label}" aria-busy="${busy}" ${busy ? "disabled" : ""}>
-      <ha-icon icon="${busy ? "mdi:loading" : icon}" class="${busy ? "spin" : ""}"></ha-icon></button>`;
+    return `<button class="btn icon-only ${cls} ${busy ? "working" : ""}" data-act="${act}" data-entity="${esc(entity)}" ${extra}
+      title="${esc(label)}" aria-label="${esc(label)}" aria-busy="${busy}" ${busy ? "disabled" : ""}>
+      <ha-icon icon="${busy ? "mdi:loading" : esc(icon)}" class="${busy ? "spin" : ""}"></ha-icon></button>`;
   }
 
   _powerBtn() {
@@ -1191,7 +1191,7 @@ class CremalinkCard extends HTMLElement {
         <div class="visual">${i.visual}</div>
         <div class="text">
           <div class="name">${esc(i.name)}</div>
-          <div class="status" style="color:${i.color}">${i.text}</div>
+          <div class="status" style="color:${i.color}">${esc(i.text)}</div>
           ${report ? `<div class="sub">${this._t("last_report", { when: this._since(report.state) })}</div>` : ""}
         </div>
         ${this._powerBtn()}
@@ -1225,7 +1225,7 @@ class CremalinkCard extends HTMLElement {
         <div class="t-icon ${iconCls}">${icon}</div>
         <div class="t-text">
           <div class="t-name">${esc(name)}</div>
-          <div class="t-state">${text}</div>
+          <div class="t-state">${esc(text)}</div>
           ${bar}
         </div>
         ${button}
@@ -1237,8 +1237,8 @@ class CremalinkCard extends HTMLElement {
   _alertsTile(f) {
     const active = this._activeAlarms(f);
     const line = (icon, text, cls, entity = "") => `
-      <div class="a-line ${cls}" data-act="row" ${entity ? `data-entity="${entity}"` : ""} role="button" tabindex="0">
-        <ha-icon icon="${icon}"></ha-icon><span>${esc(text)}</span></div>`;
+      <div class="a-line ${cls}" data-act="row" ${entity ? `data-entity="${esc(entity)}"` : ""} role="button" tabindex="0">
+        <ha-icon icon="${esc(icon)}"></ha-icon><span>${esc(text)}</span></div>`;
     const lines = active.length
       ? active.map((st) => line("mdi:alert-circle-outline", this._label(st), this._severity(st), st.entity_id))
       : [line("mdi:check-circle-outline", this._t("alerts_ok"), "ok")];
@@ -1296,7 +1296,7 @@ class CremalinkCard extends HTMLElement {
     const active = this._activeAlarms(f);
     if (!active.length) return "";
     const chips = active
-      .map((st) => `<span class="chip ${this._severity(st)}"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${this._label(st)}</span>`)
+      .map((st) => `<span class="chip ${this._severity(st)}"><ha-icon icon="mdi:alert-circle-outline"></ha-icon>${esc(this._label(st))}</span>`)
       .join("");
     const fault = active.some((st) => this._severity(st) === "fault");
     return `<div class="alarms ${fault ? "fault" : ""}" role="status"><div class="alarms-title">${this._t("alarms")}</div><div class="chips">${chips}</div></div>`;
@@ -1305,7 +1305,7 @@ class CremalinkCard extends HTMLElement {
   _tabVisual(tab) {
     const pattern = this._config.images?.tabs;
     return pattern
-      ? `<img class="t-pic" src="${String(pattern).replace("{tab}", tab)}" data-icon="${TAB_ICON[tab]}" alt="">`
+      ? `<img class="t-pic" src="${esc(String(pattern).replace("{tab}", tab))}" data-icon="${TAB_ICON[tab]}" alt="">`
       : `<ha-icon icon="${TAB_ICON[tab]}"></ha-icon>`;
   }
 
@@ -1318,7 +1318,7 @@ class CremalinkCard extends HTMLElement {
   // picture, else (drink_icons: true, or a drink without one) its icon. `cls` sizes it.
   _drinkVisual(key, cls) {
     const picture = this._drinkPicture(key);
-    if (picture) return `<img class="${cls}" src="${picture}" data-drink="${esc(key)}" alt="" loading="lazy">`;
+    if (picture) return `<img class="${cls}" src="${esc(picture)}" data-drink="${esc(key)}" alt="" loading="lazy">`;
     return this._drinkFallback(key, cls);
   }
 
@@ -1387,7 +1387,7 @@ class CremalinkCard extends HTMLElement {
         // a custom recipe is drawn like the drink its picture number stands for
         const key = SYMBOL_DRINK[icons[o]] || o;
         const visual = asked ? `<ha-icon icon="mdi:loading" class="spin"></ha-icon>` : this._drinkVisual(key, "d-pic");
-        return `<button class="drink ${sel ? "sel" : ""} ${asked ? "working" : ""}" data-act="drink" data-entity="${st.entity_id}" data-value="${esc(o)}"
+        return `<button class="drink ${sel ? "sel" : ""} ${asked ? "working" : ""}" data-act="drink" data-entity="${esc(st.entity_id)}" data-value="${esc(o)}"
             aria-pressed="${sel}" aria-busy="${asked}" ${locked ? "disabled" : ""}>
             ${visual}<span class="d-name">${esc(this._hass.formatEntityState(st, o))}</span></button>`;
       })
@@ -1401,7 +1401,7 @@ class CremalinkCard extends HTMLElement {
     const rows = f.params
       .map((st) => {
         const over = st.attributes.overridden ? `<span class="dot" title="${this._t("overridden")}" aria-label="${this._t("overridden")}"></span>` : "";
-        return `<div class="slider"><div class="s-label">${this._label(st)}${over}</div>${this._stepper(st)}</div>`;
+        return `<div class="slider"><div class="s-label">${esc(this._label(st))}${over}</div>${this._stepper(st)}</div>`;
       })
       .join("");
     return `<div class="section"><div class="sliders">${rows}</div>${this._saveBar(f)}</div>`;
@@ -1478,7 +1478,7 @@ class CremalinkCard extends HTMLElement {
       const label = busy ? this._t("stopping") : this._t("stop");
       return `
       <div class="brew">
-        <button class="btn big stop ${busy ? "working" : ""}" data-act="stop" data-entity="${brew.entity_id}" aria-busy="${busy}" ${busy ? "disabled" : ""}>
+        <button class="btn big stop ${busy ? "working" : ""}" data-act="stop" data-entity="${esc(brew.entity_id)}" aria-busy="${busy}" ${busy ? "disabled" : ""}>
           <ha-icon icon="${busy ? "mdi:loading" : "mdi:stop"}" class="${busy ? "spin" : ""}"></ha-icon><span>${label}</span></button>
       </div>`;
     }
@@ -1488,7 +1488,7 @@ class CremalinkCard extends HTMLElement {
     const enabled = f.canBrew && !busy && !this._saving;
     return `
       <div class="brew">
-        <button class="btn primary big ${busy ? "working" : ""}" data-act="brew" data-entity="${brew.entity_id}" aria-busy="${busy}" ${enabled ? "" : "disabled"}>
+        <button class="btn primary big ${busy ? "working" : ""}" data-act="brew" data-entity="${esc(brew.entity_id)}" aria-busy="${busy}" ${enabled ? "" : "disabled"}>
           <ha-icon icon="${icon}" class="${spin}"></ha-icon><span>${label}</span></button>
         ${f.hint ? `<div class="hint center">${this._t(f.hint)}</div>` : ""}
       </div>`;
@@ -1516,7 +1516,7 @@ class CremalinkCard extends HTMLElement {
         const sel = asked || (picking === undefined && o === known.state);
         const text = esc(this._hass.formatEntityState(st, o));
         return `<button class="seg-btn ${sel ? "on" : ""} ${asked ? "working" : ""}" role="radio" aria-checked="${sel}" aria-busy="${asked}" data-act="pick"
-          data-entity="${st.entity_id}" data-value="${esc(o)}" ${brewing ? "disabled" : ""}>${asked ? this._spin(text) : text}</button>`;
+          data-entity="${esc(st.entity_id)}" data-value="${esc(o)}" ${brewing ? "disabled" : ""}>${asked ? this._spin(text) : text}</button>`;
       })
       .join("");
     return `<div class="section-title">${this._t("profile")}</div><div class="seg" role="radiogroup">${buttons}</div>`;
@@ -1550,7 +1550,7 @@ class CremalinkCard extends HTMLElement {
     const counter = (tk, label) => {
       const st = this._state(tk);
       return st && !EMPTY.includes(st.state)
-        ? `<div class="kv"><span>${label}</span><span>${this._hass.formatEntityState(st)}</span></div>`
+        ? `<div class="kv"><span>${esc(label)}</span><span>${esc(this._hass.formatEntityState(st))}</span></div>`
         : "";
     };
     const counters =
@@ -1569,24 +1569,24 @@ class CremalinkCard extends HTMLElement {
       if (!st || st.state === "unavailable") continue;
       const on = st.state === "on";
       const busy = this._busy.has(st.entity_id);
-      rows.push(`<div class="row"><div class="row-label">${this._label(st)}</div>
+      rows.push(`<div class="row"><div class="row-label">${esc(this._label(st))}</div>
         <span class="waiting">${busy ? `<ha-icon icon="mdi:loading" class="spin"></ha-icon>` : ""}
-        <button class="switch ${on ? "on" : ""}" data-act="toggle-switch" data-entity="${st.entity_id}" data-on="${on ? 1 : 0}"
-          role="switch" aria-checked="${on}" aria-busy="${busy}" aria-label="${this._label(st)}" ${busy ? "disabled" : ""}><span></span></button></span></div>`);
+        <button class="switch ${on ? "on" : ""}" data-act="toggle-switch" data-entity="${esc(st.entity_id)}" data-on="${on ? 1 : 0}"
+          role="switch" aria-checked="${on}" aria-busy="${busy}" aria-label="${esc(this._label(st))}" ${busy ? "disabled" : ""}><span></span></button></span></div>`);
     }
     for (const tk of ["setting_temperature", "setting_auto_off", "setting_water_hardness"]) {
       const st = this._state(tk);
       if (!st || st.state === "unavailable") continue;
-      rows.push(`<div class="row"><div class="row-label">${this._label(st)}</div>${this._dropdown(st.entity_id)}</div>`);
+      rows.push(`<div class="row"><div class="row-label">${esc(this._label(st))}</div>${this._dropdown(st.entity_id)}</div>`);
     }
     const stamp = this._state("cremalink_statistics_updated");
     const fw = this._state("firmware_wifi_module");
     const info = [
       stamp && !EMPTY.includes(stamp.state)
-        ? `<div class="kv"><span>${this._t("stats_updated")}</span><span>${this._hass.formatEntityState(stamp)}</span></div>`
+        ? `<div class="kv"><span>${this._t("stats_updated")}</span><span>${esc(this._hass.formatEntityState(stamp))}</span></div>`
         : "",
       fw && !EMPTY.includes(fw.state)
-        ? `<div class="kv"><span>${this._t("firmware")}</span><span>${fw.state}</span></div>`
+        ? `<div class="kv"><span>${this._t("firmware")}</span><span>${esc(fw.state)}</span></div>`
         : "",
     ].join("");
     if (!rows.length && !info) return "";
@@ -2096,8 +2096,10 @@ function fire(node, type, detail) {
   node.dispatchEvent(new CustomEvent(type, { detail, bubbles: true, composed: true }));
 }
 
+// Everything from entities, the device registry and the card config goes through this
+// before it lands in the card's HTML.
 function esc(text) {
-  return String(text).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+  return String(text ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
 
 class CremalinkAdminCard extends CremalinkCard {
