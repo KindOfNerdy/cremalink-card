@@ -4,7 +4,7 @@
  * Colors and fonts come only from the Home Assistant theme.
  */
 
-const CARD_VERSION = "0.9.2";
+const CARD_VERSION = "0.9.3";
 
 const TEXT = {
   en: {
@@ -21,6 +21,7 @@ const TEXT = {
     hint_loading: "Fetching the values from the machine …",
     hint_defaults: "These are still factory values, yours are on their way.",
     hint_busy: "The machine is busy right now.",
+    hint_no_response: "Switching it off and on at the mains switch usually helps.",
     dispensing: "Your drink is on its way",
     hint_pot: "The pot only works right at the machine.",
     last_report: "Last heard {when}",
@@ -105,6 +106,7 @@ const TEXT = {
     hint_loading: "Hole die Werte von der Maschine …",
     hint_defaults: "Das sind noch Werkswerte, deine kommen gleich.",
     hint_busy: "Die Maschine ist gerade beschäftigt.",
+    hint_no_response: "Aus- und wieder einschalten am Netzschalter hilft meist.",
     dispensing: "Dein Getränk läuft",
     hint_pot: "Die Kanne geht nur direkt an der Maschine.",
     last_report: "Zuletzt gemeldet {when}",
@@ -192,6 +194,8 @@ function isColdSave(id) {
 const EMPTY = ["unknown", "unavailable", "none", ""];
 const STANDBY = ["in_standby", "going_to_sleep", "sleeping", "deep_sleep"];
 const IDLE = ["ready"];
+// The integration says so when the machine stopped answering (its last status is old news).
+const NO_RESPONSE = "no_response";
 const MODES = ["full", "control", "status", "row", "alerts"];
 // Modes drawn as one tile-sized line
 const TILE_MODES = ["row", "alerts"];
@@ -202,6 +206,7 @@ const WAIT_MS = 30000;
 function statusColor(s) {
   if (!s || EMPTY.includes(s)) return "var(--secondary-text-color)";
   if (STANDBY.includes(s)) return "var(--secondary-text-color)";
+  if (s === NO_RESPONSE) return "var(--warning-color)";
   if (s === "waking_up") return "var(--info-color)";
   if (IDLE.includes(s)) return "var(--success-color)";
   return "var(--state-climate-heat-color, var(--orange-color))";
@@ -754,7 +759,9 @@ class CremalinkCard extends HTMLElement {
     const status = this._state("cremalink_status_name")?.state;
     const brew = this._state("brew_recipe");
     const recipe = this._state("recipe");
-    const standby = STANDBY.includes(status);
+    const noResponse = status === NO_RESPONSE;
+    // Not answering is handled like sleep: nothing but the header, warnings and care is of use.
+    const standby = STANDBY.includes(status) || noResponse;
     const waking = status === "waking_up";
     const running = brew?.state === "on";
     const values = recipe?.attributes?.values_source;
@@ -763,7 +770,8 @@ class CremalinkCard extends HTMLElement {
     const params = PARAMS.map((tk) => this._state(tk)).filter((s) => s && !EMPTY.includes(s.state));
     const brewAvailable = brew && brew.state !== "unavailable";
     let hint = "";
-    if (standby) hint = "hint_standby";
+    if (noResponse) hint = "hint_no_response";
+    else if (standby) hint = "hint_standby";
     else if (waking) hint = "hint_waking";
     else if (pot) hint = "hint_pot";
     else if (recipe && recipe.state !== "unavailable" && !params.length && !running) hint = "hint_loading";
@@ -773,6 +781,7 @@ class CremalinkCard extends HTMLElement {
     return {
       status,
       standby,
+      noResponse,
       waking,
       running,
       values,
@@ -1193,6 +1202,7 @@ class CremalinkCard extends HTMLElement {
           <div class="name">${esc(i.name)}</div>
           <div class="status" style="color:${i.color}">${esc(i.text)}</div>
           ${report ? `<div class="sub">${this._t("last_report", { when: this._since(report.state) })}</div>` : ""}
+          ${f.noResponse ? `<div class="sub">${this._t(f.hint)}</div>` : ""}
         </div>
         ${this._powerBtn()}
         ${i.showBar ? `<div class="bar"><div style="width:${i.pct}%;background:${i.barColor}"></div></div>` : ""}
@@ -1207,12 +1217,15 @@ class CremalinkCard extends HTMLElement {
     const button = f.running && brew
       ? this._iconBtn("stop", brew.entity_id, "mdi:stop", this._t("stop"), { cls: "stop" })
       : this._powerBtn();
+    const report = this._state("cremalink_last_report");
     const pct = i.showBar && i.pct > 0 ? ` · ${Math.round(i.pct)} %` : "";
+    // not answering: how old the last status is, as in the header
+    const age = f.noResponse && report ? ` · ${this._since(report.state)}` : "";
     return this._tile({
       icon: i.visual,
       iconCls: i.active ? "on" : "",
       name: i.name,
-      text: `${i.text}${pct}`,
+      text: `${i.text}${pct}${age}`,
       bar: i.showBar ? `<div class="t-bar"><div style="width:${i.pct}%"></div></div>` : "",
       button,
     });

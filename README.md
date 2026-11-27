@@ -52,6 +52,8 @@ Set `device_id` only if you have more than one machine.
 
 **When the machine sleeps** the card shows only what is useful then: the header with status and power button, warnings and care. Drinks, profile, sliders and the brew button come back once the machine is on. In the Machine Manager the custom recipes are hidden in standby as well (the machine cannot confirm a change then).
 
+**When the machine stops answering** (shown as "Not answering" by the integration) the card looks like in standby: the status in the warning colour, when the machine last reported and a tip to switch it off and on at the mains switch. The row shows how long ago that was, too.
+
 **As a single row** (`mode: row`) the card is one line like a tile card, made for a "running now" section: picture, name, status with a thin progress bar while a drink runs, and one button (stop while brewing, otherwise power). Tapping the row opens the status details by default; set `tap_action` (e.g. `navigate` to a pop-up with the full card) and `hold_action` like on any tile card.
 
 **Warnings only** (the "Cremalink Warnings" card in the card picker, `type: custom:cremalink-alerts-card`, or `mode: alerts` of the main card) shows just the machine's warnings, one small line each ("Empty grounds container", "Empty drip tray" …). Tapping a line opens that warning's details by default; `tap_action` and `hold_action` work as for the row. While all is well it hides itself; set `show_ok: true` to keep it and see "All good" instead.
